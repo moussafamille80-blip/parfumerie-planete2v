@@ -47,7 +47,7 @@ module.exports = async (req, res) => {
       if (!valid(b.db)) return res.status(400).json({ error: 'format' });
       const cur = await current();
       if (b.rev !== cur.rev) return res.status(409).json(cur); // quelqu'un d'autre a modifié entre-temps
-      const next = { rev: cur.rev + 1, db: { products: b.db.products, moves: b.db.moves } };
+      const next = { rev: cur.rev + 1, db: { products: b.db.products, moves: b.db.moves, sales: Array.isArray(b.db.sales) ? b.db.sales : [] } };
       await persist(next);
       return res.status(200).json({ rev: next.rev });
     }
@@ -65,5 +65,5 @@ module.exports = async (req, res) => {
       return res.status(200).json(next);
     }
     return res.status(405).json({ error: 'method' });
-  } catch (e) { return res.status(500).json({ error: 'server' }); }
+  } catch (e) { return res.status(500).json({ error: 'server', detail: String(e.message).slice(0, 80) }); }
 };
