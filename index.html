@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planète 2 · Gestion de stock</title>
+<meta name="theme-color" content="#2a1b3d">
+<style>
+:root{--ink:#1f1a2b;--plum:#2a1b3d;--plum2:#3b2756;--gold:#c8963e;--gold-d:#9a6f22;--bg:#f4f2f7;--card:#fff;--line:#e5e0ec;--mute:#6f6780;--ok:#2f7d5b;--warn:#b7791f;--bad:#b4233c;--r:10px}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+h1,h2{font-family:"Cormorant Garamond",Georgia,serif;margin:0}
+.side{background:var(--plum);color:#e9e2f3;padding:24px 16px;display:flex;flex-direction:column;gap:24px;position:sticky;top:0;height:100vh}
+.brand{display:flex;gap:12px;align-items:center}.brand b{font:600 22px "Cormorant Garamond",serif;display:block;line-height:1}.brand small{color:#b9aacd}
+.logo{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--gold);color:var(--plum);font:700 17px "Cormorant Garamond",serif}
+nav{display:flex;flex-direction:column;gap:4px}
+nav button{all:unset;cursor:pointer;padding:10px 14px;border-radius:8px;color:#d8cdea}
+nav button:hover{background:var(--plum2)}nav button.on{background:var(--plum2);color:#fff;box-shadow:inset 3px 0 var(--gold)}
+.side-foot{margin-top:auto;display:grid;gap:8px}
+.ghost{cursor:pointer;text-align:center;padding:9px;border:1px solid #5b4679;border-radius:8px;color:#d8cdea;font-size:13px}.ghost:hover{background:var(--plum2)}
+main{padding:28px 36px;min-width:0}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+h1{font-size:38px;font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,label.ghost:focus-within{outline:2px solid var(--gold);outline-offset:2px}
+.btn{cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 16px;border-radius:8px;font:500 14px Inter}
+.btn:hover{border-color:var(--gold)}.btn.pri{background:var(--plum);color:#fff;border-color:var(--plum)}.btn.pri:hover{background:var(--plum2)}
+.btn.sm{padding:5px 10px;font-size:13px}.btn.bad{color:var(--bad)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.kpi span{color:var(--mute);font-size:13px}.kpi b{display:block;font:600 30px "Cormorant Garamond",serif;margin-top:2px}.kpi.hero{background:var(--plum);color:#fff;border:0}.kpi.hero span{color:#c9bbe0}.kpi.hero b{color:var(--gold);font-size:36px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;overflow:auto}.card h2{font-size:24px;margin-bottom:10px}
+.bar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+input,select,textarea{font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+.bar input{flex:1;min-width:180px}.bar select{width:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;color:var(--mute);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:11px 10px;border-bottom:1px solid #f0ecf4;vertical-align:middle}tr:last-child td{border:0}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}th.num{text-align:right}
+td small{color:var(--mute);display:block}.acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600}.ok{background:#e3f3ec;color:var(--ok)}.low{background:#fbf0d9;color:var(--warn)}.out{background:#f9e1e6;color:var(--bad)}
+.in-t{color:var(--ok);font-weight:600}.out-t{color:var(--bad);font-weight:600}
+.empty{text-align:center;padding:48px 16px;color:var(--mute)}.empty h2{color:var(--ink);margin-bottom:6px}.empty .btn{margin:12px 4px 0}
+dialog{border:0;border-radius:14px;padding:0;width:min(520px,94vw);box-shadow:0 20px 60px #1f1a2b55}dialog::backdrop{background:#1f1a2b88}
+dialog form{padding:24px;display:grid;gap:14px}dialog h2{font-size:28px}label.f{display:grid;gap:4px;font-size:13px;color:var(--mute)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}.hint{font-size:13px;color:var(--mute);margin:0}
+#toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;opacity:0;pointer-events:none;transition:.25s}#toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-width:860px){body{grid-template-columns:1fr}.side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:14px}.side nav{flex-direction:row;order:3;width:100%;overflow:auto}.side-foot{margin:0 0 0 auto;grid-auto-flow:column}main{padding:20px 16px}h1{font-size:30px}.grid2{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---- Interface dynamique ---- */
+body{background:radial-gradient(900px 500px at 85% -10%,#e9dcf7 0,transparent 60%),radial-gradient(700px 400px at 0 100%,#f6e9cf 0,transparent 55%),var(--bg);background-attachment:fixed}
+.side{background:linear-gradient(170deg,#3b2756,#241536 70%);overflow:hidden}
+.side::after{content:"";position:absolute;width:220px;height:220px;border-radius:50%;background:var(--gold);filter:blur(90px);opacity:.18;bottom:-80px;left:-60px;pointer-events:none}
+nav button{transition:background .2s,transform .2s,padding .2s}nav button:hover{transform:translateX(4px)}
+.kpi,.card{transition:transform .25s,box-shadow .25s,border-color .25s}
+.kpi:hover,.card:hover{transform:translateY(-3px);box-shadow:0 12px 30px #2a1b3d1f;border-color:#d9cde8}
+.btn{transition:transform .15s,background .2s,border-color .2s,box-shadow .2s}.btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.96)}.btn.pri:hover{box-shadow:0 6px 18px #2a1b3d55}
+tbody tr{transition:background .15s}tbody tr:hover{background:#faf7fd}
+#view>*{animation:rise .5s cubic-bezier(.2,.8,.2,1) both}#view>*:nth-child(2){animation-delay:.07s}#view>*:nth-child(3){animation-delay:.14s}#view>*:nth-child(4){animation-delay:.21s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+.hero2{display:flex;align-items:center;gap:36px;padding:26px 38px;border-radius:16px;margin-bottom:16px;color:#fff;background:radial-gradient(500px 220px at 15% 40%,#5a3b86 0,transparent 70%),linear-gradient(120deg,#2a1b3d,#3b2756);box-shadow:0 18px 40px #2a1b3d40;position:relative;overflow:hidden}
+.bottle{width:112px;flex:none;filter:drop-shadow(0 10px 18px #0006)}
+.liq{transform:translateY(100%);transform-box:fill-box;transition:transform 1.6s cubic-bezier(.2,.8,.2,1)}
+.shine{animation:glint 4s ease-in-out infinite}@keyframes glint{50%{opacity:.25}}
+.hero-t span{color:#cdbfe3}.hero-t b{display:block;font:600 clamp(34px,5vw,56px)/1.1 "Cormorant Garamond",serif;color:#f0c56a;margin:4px 0 8px}.hero-t p{margin:0;color:#e5dcf2}.hero-t strong{color:#fff}
+.kpi b{font-variant-numeric:tabular-nums}
+.chart{width:100%;height:auto;display:block}.chart text{font-size:9px;fill:var(--mute)}.b-bg{fill:transparent}.b-bg:hover{fill:#f3eef9}
+.b-in,.b-out{transform-box:fill-box;transform-origin:bottom;animation:grow .7s cubic-bezier(.2,.8,.2,1) both}.b-in{fill:var(--ok)}.b-out{fill:var(--gold)}
+@keyframes grow{from{transform:scaleY(0)}}
+.legend{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:13px;margin:8px 0 0}.legend i,.legend-l i{width:10px;height:10px;border-radius:50%;display:inline-block}.legend i+*{margin-right:10px}
+.donut-w{display:flex;align-items:center;gap:22px;flex-wrap:wrap}.donut{width:150px;flex:none}
+.seg{animation:draw 1s cubic-bezier(.2,.8,.2,1) both;transition:stroke-width .2s}.seg:hover{stroke-width:6.5}@keyframes draw{from{stroke-dasharray:0 100}}
+.legend-l{list-style:none;margin:0;padding:0;display:grid;gap:8px;flex:1;min-width:150px;font-size:14px}.legend-l li{display:flex;align-items:center;gap:8px}.legend-l b{margin-left:auto;font-weight:600}
+.lvl{height:4px;background:#eee9f4;border-radius:9px;margin-top:6px;min-width:56px;overflow:hidden}.lvl i{display:block;height:100%;border-radius:9px;background:var(--ok);animation:fill .8s cubic-bezier(.2,.8,.2,1) both}.lvl.low i{background:var(--warn)}.lvl.out i{background:var(--bad)}@keyframes fill{from{width:0!important}}
+dialog[open]{animation:pop .25s cubic-bezier(.2,.8,.2,1)}dialog[open]::backdrop{animation:fade .25s}@keyframes pop{from{opacity:0;transform:translateY(16px) scale(.96)}}@keyframes fade{from{opacity:0}}
+@media(max-width:860px){.hero2{flex-direction:column;text-align:center;padding:22px}}
+@media(prefers-reduced-motion:reduce){*,.liq,.seg,.b-in,.b-out,.lvl i{animation:none!important;transition:none!important}.liq{transform:none}}
+.fmt{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fmt label{display:flex;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;transition:border-color .2s,background .2s}
+.fmt input{width:auto;accent-color:var(--gold)}.fmt small{display:block;color:var(--mute);font-size:12px}.fmt label:has(input:checked){border-color:var(--gold);background:#fbf5e8}
+.link{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:#ffffff14;font-size:13px;color:#fff}.link b{font-weight:600}
+.link i{width:10px;height:10px;border-radius:50%;background:#e0566f;flex:none;animation:pulse 1.6s infinite}.link.on i{background:#4fd09a;animation:none}
+.link small{display:block;color:#b9aacd;font-size:11px;word-break:break-all}@keyframes pulse{50%{opacity:.3}}
+.side-foot .ghost{padding:7px;font-size:12.5px}.side-foot [hidden]{display:none}
+#printzone{display:none}
+@media print{@page{size:A4 landscape;margin:12mm}body{display:block;background:#fff!important}body>*:not(#printzone){display:none!important}
+#printzone{display:block;color:#1f1a2b;-webkit-print-color-adjust:exact;print-color-adjust:exact}#printzone h1{font-size:26pt;color:#2a1b3d}#printzone h2{font:600 14pt Inter,sans-serif;color:#a86f1c;margin:2pt 0}
+#printzone .d{color:#6f6780;font-size:9pt;margin:0 0 10pt}#printzone th{background:#2a1b3d;color:#fff;font-size:9.5pt}#printzone td{font-size:9.5pt;padding:5pt 8pt}
+#printzone tfoot td{background:#f4ecdc;font-weight:700;text-align:right;color:#2a1b3d}#printzone tr{break-inside:avoid}#printzone thead{display:table-header-group}}
+.link.ok i{background:#4fd09a;animation:none}.link.sync i{background:var(--gold)}.link.local i{background:#9a8fb0;animation:none}
+.bk-sum{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#faf7fd;font-size:14px;line-height:1.7}
+
+</style>
+</head>
+<body>
+<aside class="side">
+  <div class="brand"><span class="logo">P2</span><div><b>Planète 2</b><small>Parfumerie</small></div></div>
+  <nav id="nav">
+    <button data-view="dashboard" class="on">Tableau de bord</button>
+    <button data-view="products">Produits</button>
+    <button data-view="moves">Mouvements</button>
+  </nav>
+  <div class="side-foot">
+    <div class="link sync" id="link"><i></i><div><b></b><small></small></div></div>
+    <button class="ghost" id="backups">Sauvegardes datées</button>
+    <button class="ghost" id="export">Sauvegarder (.json)</button>
+    <label class="ghost">Restaurer une sauvegarde<input type="file" id="import" accept="application/json" hidden></label>
+    <button class="ghost" id="logout">Se déconnecter</button>
+  </div>
+</aside>
+<main>
+  <header class="top"><h1 id="title"></h1><div id="actions"></div></header>
+  <section id="view"></section>
+</main>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+'use strict';
+/* Planète 2 — Gestion de stock (parfumerie). Données stockées dans le navigateur (localStorage). */
+const KEY = 'planete2.v1';
+const CATS = ['Eau de parfum', 'Eau de toilette', 'Extrait', 'Brume', 'Huile / Oud', 'Coffret', 'Autre'];
+const $ = (s, r = document) => r.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fcfa = n => new Intl.NumberFormat('fr-FR').format(Math.round(n || 0)) + ' FCFA';
+const dateFr = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(16).slice(2));
+const today = () => new Date().toISOString().slice(0, 10);
+
+let db = load(), view = 'dashboard', q = '', fcat = '', ftype = '';
+
+function load() {
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.products) && Array.isArray(d.moves)) return d; } catch (e) {}
+  return { products: [], moves: [] };
+}
+function save() {
+  dirty = true; push();
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { toast('Enregistrement impossible : stockage plein ou bloqué'); }
+}
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+const prod = id => db.products.find(p => p.id === id);
+const status = p => p.stock <= 0 ? ['out', 'Rupture'] : p.stock <= p.min ? ['low', 'Stock bas'] : ['ok', 'En stock'];
+const margin = p => p.cost > 0 ? ((p.price - p.cost) / p.price * 100) : 0;
+
+/* ---------- Rendu ---------- */
+const TITLES = { dashboard: 'Tableau de bord', products: 'Produits', moves: 'Mouvements de stock' };
+function render() {
+  $('#title').textContent = TITLES[view];
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  const a = $('#actions');
+  a.innerHTML = view === 'moves'
+    ? '<button class="btn" data-a="in">+ Entrée</button> <button class="btn pri" data-a="out">− Sortie</button>'
+    : '<button class="btn pri" data-a="new">+ Nouveau produit</button>';
+  $('#view').innerHTML = { dashboard: vDash, products: vProducts, moves: vMoves }[view]();
+  a.insertAdjacentHTML('afterbegin', '<button class="btn" data-a="exp">Exporter PDF / Word</button> ');
+  fx();
+}
+
+const PAL = ['#c8963e', '#6b4a9a', '#d4688a', '#2f7d5b', '#4a7fb5', '#9a8fb0'];
+const BOTTLE = 'M40 8h40v18h-6v10c20 8 32 22 32 44v70a14 14 0 0 1-14 14H28a14 14 0 0 1-14-14V80c0-22 12-36 32-44V26h-6z';
+function vDash() {
+  const P = db.products;
+  if (!P.length) return empty();
+  const units = P.reduce((s, p) => s + p.stock, 0);
+  const cost = P.reduce((s, p) => s + p.stock * p.cost, 0);
+  const sale = P.reduce((s, p) => s + p.stock * p.price, 0);
+  const alerts = P.filter(p => p.stock <= p.min).sort((a, b) => a.stock - b.stock);
+  const pct = Math.round((P.length - alerts.length) / P.length * 100);
+  const last = [...db.moves].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts).slice(0, 6);
+  const byCat = {}; P.forEach(p => byCat[p.cat] = (byCat[p.cat] || 0) + p.stock * p.cost);
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), tot = cats.reduce((s, c) => s + c[1], 0) || 1;
+  let acc = 0;
+  const segs = cats.map(([c, v], i) => { const s = v / tot * 100; const r = `<circle class="seg" r="15.9155" cx="21" cy="21" fill="none" stroke="${PAL[i % 6]}" stroke-width="5" stroke-dasharray="${s} ${100 - s}" stroke-dashoffset="${-acc}" style="animation-delay:${i * 120}ms"><title>${esc(c)} : ${fcfa(v)}</title></circle>`; acc += s; return r; }).join('');
+  const agg = [...Array(14)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() - 13 + i); return { d: d.toISOString().slice(0, 10), in: 0, out: 0 }; });
+  db.moves.forEach(m => { const a = agg.find(x => x.d === m.date); if (a) a[m.type] += m.qty; });
+  const mx = Math.max(1, ...agg.flatMap(a => [a.in, a.out]));
+  const bars = agg.map((a, i) => { const x = i * 28 + 4, hi = a.in / mx * 100, ho = a.out / mx * 100;
+    return `<g><title>${dateFr(a.d)} : +${a.in} / −${a.out}</title><rect class="b-bg" x="${x - 3}" y="0" width="25" height="110" rx="6"/><rect class="b-in" x="${x}" y="${110 - hi}" width="10" height="${hi}" rx="3" style="animation-delay:${i * 45}ms"/><rect class="b-out" x="${x + 11}" y="${110 - ho}" width="10" height="${ho}" rx="3" style="animation-delay:${i * 45 + 25}ms"/></g>`; }).join('');
+  return `<div class="hero2">
+    <svg class="bottle" viewBox="0 0 120 170" aria-label="Niveau global du stock : ${pct} %"><defs><clipPath id="bc"><path d="${BOTTLE}"/></clipPath><linearGradient id="lg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f0c56a"/><stop offset="1" stop-color="#a86f1c"/></linearGradient></defs>
+      <g clip-path="url(#bc)"><rect width="120" height="170" fill="#ffffff14"/><rect class="liq" data-pct="${pct}" y="34" width="120" height="126" fill="url(#lg)"/><path class="shine" d="M26 84v60" stroke="#fff" stroke-opacity=".35" stroke-width="4" stroke-linecap="round"/></g>
+      <path d="${BOTTLE}" fill="none" stroke="#e6d6f5" stroke-width="2"/><rect x="42" y="0" width="36" height="9" rx="3" fill="#c8963e"/></svg>
+    <div class="hero-t"><span>Valeur de vente potentielle</span><b data-count="${sale}" data-fmt="fcfa">${fcfa(sale)}</b>
+      <p><strong>${pct} %</strong> des références sont au-dessus de leur seuil d’alerte${alerts.length ? ` · <strong>${alerts.length}</strong> à réapprovisionner` : ''}.</p></div></div>
+  <div class="kpis">
+    <div class="kpi"><span>Valeur du stock (achat)</span><b data-count="${cost}" data-fmt="fcfa">${fcfa(cost)}</b></div>
+    <div class="kpi"><span>Marge potentielle</span><b data-count="${sale - cost}" data-fmt="fcfa">${fcfa(sale - cost)}</b></div>
+    <div class="kpi"><span>Unités en stock</span><b data-count="${units}">${units}</b></div>
+    <div class="kpi"><span>Références</span><b data-count="${P.length}">${P.length}</b></div></div>
+  <div class="grid2">
+    <div class="card"><h2>Entrées et sorties · 14 jours</h2><svg class="chart" viewBox="0 0 392 130"><g>${bars}</g>${agg.map((a, i) => i % 3 === 0 ? `<text x="${i * 28 + 14}" y="126" text-anchor="middle">${a.d.slice(8)}/${a.d.slice(5, 7)}</text>` : '').join('')}</svg>
+      <p class="legend"><i style="background:var(--ok)"></i>Entrées <i style="background:var(--gold)"></i>Sorties</p></div>
+    <div class="card"><h2>Valeur par catégorie</h2><div class="donut-w"><svg class="donut" viewBox="0 0 42 42"><circle r="15.9155" cx="21" cy="21" fill="none" stroke="#eee9f4" stroke-width="5"/><g transform="rotate(-90 21 21)">${segs}</g></svg>
+      <ul class="legend-l">${cats.map(([c, v], i) => `<li><i style="background:${PAL[i % 6]}"></i>${esc(c)}<b>${Math.round(v / tot * 100)} %</b></li>`).join('')}</ul></div></div></div>
+  <div class="grid2">
+    <div class="card"><h2>À réapprovisionner</h2>${alerts.length ? `<table><tbody>${alerts.map(p => `<tr><td>${esc(p.name)}<small>${esc(p.supplier || 'Fournisseur non renseigné')}</small></td><td class="num"><span class="badge ${status(p)[0]}">${p.stock} / seuil ${p.min}</span></td><td class="acts"><button class="btn sm" data-a="in" data-id="${p.id}">Entrée</button></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Tous les produits sont au-dessus de leur seuil.</p>'}</div>
+    <div class="card"><h2>Derniers mouvements</h2>${last.length ? movesTable(last) : '<p class="hint">Aucun mouvement enregistré.</p>'}</div></div>`;
+}
+function fx() {
+  const calm = matchMedia('(prefers-reduced-motion:reduce)').matches;
+  document.querySelectorAll('[data-count]').forEach(el => {
+    const t = +el.dataset.count, f = el.dataset.fmt === 'fcfa' ? fcfa : n => String(Math.round(n));
+    if (calm) return;
+    const t0 = performance.now();
+    (function s(now) { const k = Math.min(1, (now - t0) / 1000); el.textContent = f(t * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(s); })(t0);
+  });
+  const l = $('.liq');
+  if (l) requestAnimationFrame(() => requestAnimationFrame(() => l.style.transform = `translateY(${100 - l.dataset.pct}%)`));
+}
+
+function vProducts() {
+  if (!db.products.length) return empty();
+  const s = q.toLowerCase();
+  const list = db.products.filter(p => (!fcat || p.cat === fcat) && (!s || [p.name, p.brand, p.supplier].join(' ').toLowerCase().includes(s)))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  return `<div class="bar"><input id="q" type="search" placeholder="Rechercher un parfum, une marque, un fournisseur…" value="${esc(q)}" aria-label="Rechercher">
+    <select id="fcat" aria-label="Catégorie"><option value="">Toutes les catégories</option>${CATS.map(c => `<option ${c === fcat ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+  <div class="card">${list.length ? `<table><thead><tr><th>Produit</th><th>Fournisseur</th><th class="num">Prix achat</th><th class="num">Prix vente</th><th class="num">Marge</th><th class="num">Stock</th><th></th></tr></thead><tbody>
+  ${list.map(p => { const [c, l] = status(p); return `<tr><td><b>${esc(p.name)}</b><small>${esc([p.brand, p.cat, p.size && p.size + ' ml'].filter(Boolean).join(' · '))}</small></td>
+    <td>${esc(p.supplier || '—')}</td><td class="num">${fcfa(p.cost)}</td><td class="num">${fcfa(p.price)}</td><td class="num">${margin(p).toFixed(0)} %</td>
+    <td class="num"><span class="badge ${c}" title="${l}">${p.stock}</span><div class="lvl ${c}"><i style="width:${Math.min(100, p.stock / Math.max(p.min * 3, 1) * 100)}%"></i></div></td>
+    <td><div class="acts"><button class="btn sm" data-a="in" data-id="${p.id}">Entrée</button><button class="btn sm" data-a="out" data-id="${p.id}">Sortie</button><button class="btn sm" data-a="edit" data-id="${p.id}">Modifier</button><button class="btn sm bad" data-a="del" data-id="${p.id}" aria-label="Supprimer ${esc(p.name)}">Supprimer</button></div></td></tr>`; }).join('')}
+  </tbody></table>` : '<p class="empty">Aucun produit ne correspond à votre recherche.</p>'}</div>`;
+}
+
+function movesTable(list) {
+  return `<table><thead><tr><th>Date</th><th>Produit</th><th class="num">Qté</th><th class="num">Prix unitaire</th></tr></thead><tbody>${list.map(m => {
+    const p = prod(m.pid); return `<tr><td>${dateFr(m.date)}</td><td>${esc(p ? p.name : 'Produit supprimé')}<small>${esc(m.note || '')}</small></td>
+    <td class="num ${m.type === 'in' ? 'in-t' : 'out-t'}">${m.type === 'in' ? '+' : '−'}${m.qty}</td><td class="num">${fcfa(m.unit)}</td></tr>`; }).join('')}</tbody></table>`;
+}
+function vMoves() {
+  const list = db.moves.filter(m => !ftype || m.type === ftype).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
+  return `<div class="bar"><select id="ftype" aria-label="Type"><option value="">Entrées et sorties</option><option value="in" ${ftype === 'in' ? 'selected' : ''}>Entrées</option><option value="out" ${ftype === 'out' ? 'selected' : ''}>Sorties</option></select></div>
+  <div class="card">${list.length ? movesTable(list) : '<p class="empty">Aucun mouvement. Enregistrez une entrée à la réception d’une commande, ou une sortie à chaque vente.</p>'}</div>`;
+}
+function empty() {
+  return `<div class="card empty"><h2>Votre boutique est prête</h2><p>Ajoutez votre premier parfum avec son prix fournisseur et son prix de vente.</p>
+  <button class="btn pri" data-a="new">+ Nouveau produit</button><button class="btn" data-a="demo">Charger des exemples</button></div>`;
+}
+
+/* ---------- Formulaires ---------- */
+const dlg = $('#dlg');
+function open(html) { dlg.innerHTML = html; dlg.showModal(); const f = dlg.querySelector('input,select'); f && f.focus(); }
+const field = (label, name, val = '', attrs = '') => `<label class="f">${label}<input name="${name}" value="${esc(val)}" ${attrs}></label>`;
+
+function productForm(p = {}) {
+  open(`<form method="dialog" id="pf"><h2>${p.id ? 'Modifier le produit' : 'Nouveau produit'}</h2>
+  ${field('Nom du parfum', 'name', p.name, 'required maxlength="80"')}
+  <div class="row">${field('Marque', 'brand', p.brand, 'maxlength="60"')}<label class="f">Catégorie<select name="cat">${CATS.map(c => `<option ${c === p.cat ? 'selected' : ''}>${c}</option>`).join('')}</select></label></div>
+  <div class="row">${field('Contenance (ml)', 'size', p.size, 'type="number" min="0" step="any"')}${field('Fournisseur', 'supplier', p.supplier, 'maxlength="80"')}</div>
+  <div class="row">${field('Prix fournisseur (FCFA)', 'cost', p.cost, 'type="number" min="0" step="any" required')}${field('Prix de vente Planète 2 (FCFA)', 'price', p.price, 'type="number" min="0" step="any" required')}</div>
+  <div class="row">${p.id ? '' : field('Stock initial', 'stock', 0, 'type="number" min="0" step="1" required')}${field('Seuil d’alerte', 'min', p.min ?? 3, 'type="number" min="0" step="1" required')}</div>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri" value="ok">Enregistrer</button></div></form>`);
+  $('#pf').onsubmit = e => {
+    const d = Object.fromEntries(new FormData(e.target));
+    const rec = { name: d.name.trim(), brand: d.brand.trim(), cat: d.cat, size: +d.size || 0, supplier: d.supplier.trim(), cost: +d.cost, price: +d.price, min: +d.min };
+    if (p.id) Object.assign(p, rec); else db.products.push({ id: uid(), stock: Math.max(0, parseInt(d.stock, 10) || 0), ...rec });
+    save(); render(); toast('Produit enregistré');
+  };
+}
+
+function moveForm(type, pid) {
+  if (!db.products.length) return toast('Ajoutez d’abord un produit');
+  const isIn = type === 'in', first = prod(pid) || db.products[0];
+  open(`<form method="dialog" id="mf"><h2>${isIn ? 'Entrée en stock' : 'Sortie de stock'}</h2>
+  <label class="f">Produit<select name="pid">${db.products.map(p => `<option value="${p.id}" ${p.id === first.id ? 'selected' : ''}>${esc(p.name)} (stock : ${p.stock})</option>`).join('')}</select></label>
+  <div class="row">${field('Quantité', 'qty', 1, 'type="number" min="1" step="1" required')}${field('Date', 'date', today(), 'type="date" required')}</div>
+  ${field(isIn ? 'Prix d’achat unitaire (FCFA)' : 'Prix de vente unitaire (FCFA)', 'unit', isIn ? first.cost : first.price, 'type="number" min="0" step="any" required')}
+  ${field('Note (n° de facture, client, motif…)', 'note', '', 'maxlength="120"')}
+  <p class="hint" id="mh">${isIn ? 'Le prix fournisseur du produit sera mis à jour avec ce prix.' : ''}</p>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer</button></div></form>`);
+  const f = $('#mf');
+  f.pid.onchange = () => { const p = prod(f.pid.value); f.unit.value = isIn ? p.cost : p.price; };
+  f.onsubmit = e => {
+    const d = Object.fromEntries(new FormData(f)), p = prod(d.pid), qty = parseInt(d.qty, 10);
+    if (!isIn && qty > p.stock) { e.preventDefault(); $('#mh').textContent = `Stock insuffisant : il reste ${p.stock} unité(s).`; $('#mh').style.color = 'var(--bad)'; return; }
+    p.stock += isIn ? qty : -qty;
+    if (isIn) p.cost = +d.unit;
+    db.moves.push({ id: uid(), ts: Date.now(), pid: p.id, type, qty, unit: +d.unit, date: d.date, note: d.note.trim() });
+    save(); render(); toast(isIn ? 'Entrée enregistrée' : 'Sortie enregistrée');
+  };
+}
+
+function demo() {
+  const mk = (name, brand, cat, size, supplier, cost, price, stock, min) => ({ id: uid(), name, brand, cat, size, supplier, cost, price, stock, min });
+  db.products.push(mk('Oud Royal', 'Maison Alhambra', 'Eau de parfum', 100, 'Dubai Parfums', 18000, 35000, 12, 4),
+    mk('Rose Éclat', 'Lumière', 'Eau de toilette', 50, 'Paris Import', 9000, 18000, 3, 5),
+    mk('Ambre Nuit', 'Maison Alhambra', 'Extrait', 30, 'Dubai Parfums', 22000, 45000, 0, 2));
+  save(); render();
+}
+
+/* ---------- Export PDF / Word ---------- */
+const plain = v => fcfa(v).replace(/[\u202f\u00a0]/g, ' ');
+const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500); };
+function docData(kind) {
+  const P = [...db.products].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (kind === 'low') { const L = P.filter(p => p.stock <= p.min).sort((a, b) => (a.supplier || '').localeCompare(b.supplier || '', 'fr'));
+    return { file: 'reapprovisionnement', title: 'Produits à réapprovisionner', head: ['Produit', 'Fournisseur', 'Stock', 'Seuil', 'Prix fournisseur'],
+      rows: L.map(p => [p.name, p.supplier || '-', p.stock, p.min, plain(p.cost)]), foot: `${L.length} produit(s) à commander` }; }
+  if (kind === 'moves') { const M = [...db.moves].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
+    return { file: 'mouvements', title: 'Historique des mouvements', head: ['Date', 'Type', 'Produit', 'Qté', 'Prix unitaire', 'Total', 'Note'],
+      rows: M.map(m => [dateFr(m.date), m.type === 'in' ? 'Entrée' : 'Sortie', prod(m.pid)?.name || 'Produit supprimé', m.qty, plain(m.unit), plain(m.unit * m.qty), m.note || '']), foot: `${M.length} mouvement(s)` }; }
+  const cost = P.reduce((s, p) => s + p.stock * p.cost, 0), sale = P.reduce((s, p) => s + p.stock * p.price, 0);
+  return { file: 'inventaire', title: 'Inventaire du stock', head: ['Produit', 'Marque', 'Catégorie', 'Fournisseur', 'Prix achat', 'Prix vente', 'Stock', 'Valeur (achat)'],
+    rows: P.map(p => [p.name, p.brand || '-', p.cat, p.supplier || '-', plain(p.cost), plain(p.price), p.stock, plain(p.stock * p.cost)]),
+    foot: `Valeur du stock à l'achat : ${plain(cost)}  |  Valeur de vente potentielle : ${plain(sale)}` };
+}
+function toPDF(d) {
+  let z = $('#printzone'); if (!z) { z = document.createElement('div'); z.id = 'printzone'; document.body.appendChild(z); }
+  z.innerHTML = `<h1>Planète 2</h1><h2>${esc(d.title)}</h2><p class="d">Édité le ${dateFr(today())}</p><table><thead><tr>${d.head.map(x => `<th>${esc(x)}</th>`).join('')}</tr></thead>
+  <tbody>${d.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody><tfoot><tr><td colspan="${d.head.length}">${esc(d.foot)}</td></tr></tfoot></table>`;
+  setTimeout(() => window.print(), 300);
+}
+function toWord(d) {
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${esc(d.title)}</title>
+<style>@page WordSection1{size:841.9pt 595.3pt;mso-page-orientation:landscape;margin:42pt}div.WordSection1{page:WordSection1}body{font-family:Calibri,Arial,sans-serif;color:#1f1a2b}
+h1{font-family:Georgia,serif;color:#2a1b3d;font-size:24pt;margin:0}h2{color:#a86f1c;font-size:14pt;margin:2pt 0 4pt}p.d{color:#6f6780;font-size:9pt;margin:0 0 12pt}
+table{border-collapse:collapse;width:100%}th{background:#2a1b3d;color:#fff;text-align:left;padding:5pt;font-size:10pt}td{border-bottom:1px solid #e5e0ec;padding:5pt;font-size:10pt}
+td.t{background:#f4ecdc;font-weight:bold;text-align:right;color:#2a1b3d}</style></head><body><div class="WordSection1"><h1>Planète 2</h1><h2>${esc(d.title)}</h2><p class="d">Édité le ${dateFr(today())}</p>
+<table><tr>${d.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr>${d.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}
+<tr><td class="t" colspan="${d.head.length}">${esc(d.foot)}</td></tr></table></div></body></html>`;
+  dl(new Blob(['\ufeff', html], { type: 'application/msword' }), `planete2-${d.file}-${today()}.doc`);
+}
+function exportForm() {
+  open(`<form method="dialog" id="xf"><h2>Exporter un document</h2>
+  <label class="f">Document<select name="kind"><option value="inv">Inventaire du stock</option><option value="low">Produits à réapprovisionner</option><option value="moves">Historique des mouvements</option></select></label>
+  <div class="fmt"><label><input type="radio" name="fmt" value="pdf" checked><span><b>PDF</b><small>Prêt à imprimer ou à envoyer</small></span></label>
+  <label><input type="radio" name="fmt" value="word"><span><b>Word</b><small>Modifiable (.doc)</small></span></label></div>
+  <p class="hint">PDF : dans la fenêtre d’impression qui s’ouvre, choisissez « Enregistrer au format PDF » comme imprimante.</p><div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Télécharger</button></div></form>`);
+  $('#xf').onsubmit = e => {
+    const f = Object.fromEntries(new FormData(e.target)), d = docData(f.kind);
+    if (!d.rows.length) { e.preventDefault(); return toast('Rien à exporter pour ce document'); }
+    (f.fmt === 'word' ? toWord : toPDF)(d); toast('Téléchargement lancé');
+  };
+}
+
+/* ---------- Synchronisation cloud (Vercel + Redis) ---------- */
+const PW = 'planete2.pw';
+let pass = sessionStorage.getItem(PW) || '', rev = 0, cloud = 'sync', dirty = false, pushing = false, again = false;
+const cache = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (_) {} };
+async function api(method, body, qs = '') {
+  const r = await fetch('/api/data' + qs, { method, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-app-password': pass }, body: body ? JSON.stringify(body) : undefined });
+  let j = {}; try { j = await r.json(); } catch (_) {}
+  return { status: r.status, j };
+}
+function setLink() {
+  const M = { ok: ['Synchronisé', 'Données partagées sur tous vos appareils'], sync: ['Synchronisation…', 'Un instant'], offline: ['Hors connexion', 'Modifications gardées ici, envoyées au retour du réseau'], local: ['Mode local', 'Serveur non configuré : données de ce navigateur seulement'] }[cloud];
+  const el = $('#link'); el.className = 'link ' + cloud; el.querySelector('b').textContent = M[0]; el.querySelector('small').textContent = M[1];
+}
+function login(msg) {
+  open(`<form method="dialog" id="lf"><h2>Planète 2</h2><p class="hint">${esc(msg || 'Entrez le mot de passe pour accéder au stock.')}</p>${field('Mot de passe', 'pw', '', 'type="password" required autocomplete="current-password"')}<div class="foot"><button class="btn pri">Entrer</button></div></form>`);
+  dlg.oncancel = e => e.preventDefault();
+  $('#lf').onsubmit = e => { pass = new FormData(e.target).get('pw'); sessionStorage.setItem(PW, pass); dlg.oncancel = null; pull(true); };
+}
+async function pull(first) {
+  try {
+    const { status, j } = await api('GET');
+    if (status === 401) { pass = ''; sessionStorage.removeItem(PW); return login('Mot de passe incorrect'); }
+    if (status === 503) { cloud = 'local'; if (j.error === 'password') toast('Variable APP_PASSWORD manquante sur Vercel'); return setLink(); }
+    if (status !== 200) throw new Error('http');
+    cloud = 'ok';
+    if (first && j.rev === 0 && db.products.length) { dirty = true; setLink(); return push(); } // reprise des données déjà saisies sur ce navigateur
+    if (first || (j.rev !== rev && !dirty)) { db = j.db; rev = j.rev; cache(); render(); }
+  } catch (e) { cloud = 'offline'; }
+  setLink();
+}
+async function push() {
+  if (cloud === 'local') return;
+  if (pushing) { again = true; return; }
+  pushing = true; cloud = 'sync'; setLink();
+  try {
+    const { status, j } = await api('PUT', { rev, db });
+    if (status === 200) { rev = j.rev; dirty = false; cloud = 'ok'; }
+    else if (status === 409) { db = j.db; rev = j.rev; dirty = false; cloud = 'ok'; cache(); render(); toast('Modifié depuis un autre appareil : version à jour rechargée, refaites votre dernière saisie'); }
+    else if (status === 401) { pass = ''; sessionStorage.removeItem(PW); login('Session expirée'); }
+    else throw new Error('http');
+  } catch (e) { cloud = 'offline'; dirty = true; }
+  pushing = false; setLink();
+  if (again) { again = false; push(); }
+}
+const sumTxt = d => `${d.products.length} produit(s) · ${d.moves.length} mouvement(s) · stock ${fcfa(d.products.reduce((s, p) => s + p.stock * p.cost, 0))} (achat)`;
+const bkLabel = id => id === 'avant-restauration' ? 'Avant la dernière restauration' : 'Fin de journée du ' + dateFr(id);
+async function backupsForm() {
+  if (cloud === 'local' || cloud === 'offline') return toast('Les sauvegardes datées demandent une connexion au serveur');
+  let ids = [];
+  try { const r = await api('GET', null, '?backups=1'); if (r.status !== 200) throw new Error('http'); ids = r.j.backups || []; } catch (e) { return toast('Liste des sauvegardes indisponible'); }
+  if (!ids.length) return toast('Aucune sauvegarde pour l’instant : la première est créée à la prochaine modification');
+  open(`<form method="dialog" id="bf"><h2>Sauvegardes automatiques</h2>
+  <p class="hint">Une sauvegarde est enregistrée à chaque modification, une par jour, et conservée 90 jours. Choisissez une date pour revenir à l’état de cette journée.</p>
+  <label class="f">Date<select name="sel">${ids.map(id => `<option value="${id}">${esc(bkLabel(id))}</option>`).join('')}</select></label>
+  <div class="bk-sum" id="sum"></div>
+  <div class="foot"><button type="button" class="btn" data-close>Fermer</button><button class="btn pri" id="rb" disabled>Revenir à cette date</button></div></form>`);
+  const f = $('#bf'), show = async () => {
+    $('#rb').disabled = true; $('#sum').textContent = 'Chargement…';
+    try { const r = await api('GET', null, '?backup=' + encodeURIComponent(f.sel.value)); if (r.status !== 200) throw new Error('http');
+      $('#sum').innerHTML = `<b>Cette sauvegarde</b> : ${esc(sumTxt(r.j.db))}<br><b>Actuellement</b> : ${esc(sumTxt(db))}`; $('#rb').disabled = false; }
+    catch (e) { $('#sum').textContent = 'Sauvegarde illisible.'; }
+  };
+  f.sel.onchange = show; show();
+  f.onsubmit = async e => {
+    e.preventDefault();
+    if (!confirm(`Remplacer les données actuelles par celles de : ${bkLabel(f.sel.value)} ?\nLes données actuelles seront gardées dans « Avant la dernière restauration ».`)) return;
+    try {
+      const { status, j } = await api('POST', { restore: f.sel.value, rev });
+      if (status === 200) { db = j.db; rev = j.rev; dirty = false; cloud = 'ok'; cache(); dlg.close(); setLink(); render(); toast('Données restaurées'); }
+      else if (status === 409) { toast('Données modifiées depuis un autre appareil : réessayez'); pull(true); }
+      else toast('Restauration impossible');
+    } catch (err) { toast('Restauration impossible : connexion perdue'); }
+  };
+}
+
+const idle = () => !dlg.open && !pushing && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+setInterval(() => { if (!pass || cloud === 'local') return; if (dirty) push(); else if (idle()) pull(false); }, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && pass && cloud !== 'local' && !dirty && idle()) pull(false); });
+addEventListener('online', () => pass && cloud !== 'local' && (dirty ? push() : pull(false)));
+
+/* ---------- Événements ---------- */
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-close]')) return dlg.close();
+  const nav = e.target.closest('#nav button'); if (nav) { view = nav.dataset.view; return render(); }
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const p = prod(b.dataset.id);
+  ({ new: () => productForm(), exp: exportForm, edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => moveForm('out', b.dataset.id), demo,
+    del: () => { if (confirm(`Supprimer « ${p.name} » et son historique ?`)) { db.products = db.products.filter(x => x !== p); db.moves = db.moves.filter(m => m.pid !== p.id); save(); render(); toast('Produit supprimé'); } } })[b.dataset.a]();
+});
+document.addEventListener('input', e => { if (e.target.id === 'q') { q = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#q'); i.focus(); i.setSelectionRange(pos, pos); } });
+document.addEventListener('change', e => { if (e.target.id === 'fcat') { fcat = e.target.value; render(); } if (e.target.id === 'ftype') { ftype = e.target.value; render(); } });
+$('#export').onclick = () => {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' }));
+  a.download = `planete2-stock-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
+};
+$('#import').onchange = async e => {
+  try {
+    const d = JSON.parse(await e.target.files[0].text());
+    if (!Array.isArray(d.products) || !Array.isArray(d.moves)) throw 0;
+    if (confirm('Remplacer toutes les données actuelles par ce fichier ?')) { db = d; save(); render(); toast('Données importées'); }
+  } catch (_) { toast('Fichier invalide'); }
+  e.target.value = '';
+};
+$('#backups').onclick = backupsForm;
+$('#logout').onclick = () => { sessionStorage.removeItem(PW); location.reload(); };
+setLink();
+render();
+if (location.protocol === 'file:') { cloud = 'local'; setLink(); } else if (pass) pull(true); else login();
+
+</script>
+</body>
+</html>
