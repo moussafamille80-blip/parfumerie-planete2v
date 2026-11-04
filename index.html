@@ -247,9 +247,9 @@ function movesTable(list, acts) {
     return r ? `<span class="badge low">En sortie : ${r}</span><small>${det}</small><div class="acts"><button class="btn sm pri" data-a="sellout" data-id="${m.id}">Vente</button><button class="btn sm" data-a="back" data-id="${m.id}">Retour</button></div>`
       : `<span class="badge ok">Soldée</span><small>${det}</small>`;
   };
-  return `<table><thead><tr><th>Date</th><th>Produit</th><th class="num">Qté</th><th class="num">Prix unitaire</th>${acts ? '<th>Statut</th>' : ''}</tr></thead><tbody>${list.map(m => {
+  return `<table><thead><tr><th>Date</th><th>Produit</th><th class="num">Qté</th><th class="num">Prix unitaire</th>${acts ? '<th>Statut</th><th></th>' : ''}</tr></thead><tbody>${list.map(m => {
     const p = prod(m.pid); return `<tr><td>${dateFr(m.date)}</td><td>${esc(p ? p.name : 'Produit supprimé')}<small>${esc(m.note || '')}</small></td>
-    <td class="num ${m.type === 'out' ? 'out-t' : 'in-t'}">${m.type === 'out' ? '−' : '+'}${m.qty}</td><td class="num">${fcfa(m.unit)}</td>${acts ? `<td>${st(m)}</td>` : ''}</tr>`; }).join('')}</tbody></table>`;
+    <td class="num ${m.type === 'out' ? 'out-t' : 'in-t'}">${m.type === 'out' ? '−' : '+'}${m.qty}</td><td class="num">${fcfa(m.unit)}</td>${acts ? `<td>${st(m)}</td><td>${m.sale ? '' : `<button class="btn sm bad" data-a="delmove" data-id="${m.id}" aria-label="Supprimer ce mouvement">Supprimer</button>`}</td>` : ''}</tr>`; }).join('')}</tbody></table>`;
 }
 function vMoves() {
   const list = db.moves.filter(m => !ftype || (ftype === 'open' ? outRest(m) > 0 : m.type === ftype)).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
@@ -487,6 +487,51 @@ function saleFromExit(mid) {
   };
 }
 
+/* ---------- Suppression d'un mouvement (mot de passe requis) ---------- */
+function moveBlock(m) {
+  const p = prod(m.pid);
+  if (m.sale) return 'Ce mouvement appartient à une vente : annulez la vente depuis la page Ventes.';
+  if (m.type === 'out' && ((m.sold || 0) > 0 || (m.ret || 0) > 0)) return 'Cette sortie a déjà des ventes ou des retours liés. Annulez d’abord la vente concernée, ou supprimez d’abord le retour.';
+  if ((m.type === 'in' || m.type === 'ret') && p && p.stock < m.qty) return `Suppression impossible : il ne reste que ${p.stock} unité(s) en stock pour « ${p.name} », alors que ce mouvement en a ajouté ${m.qty} (elles ont déjà été sorties).`;
+  return '';
+}
+function removeMove(m) {
+  const p = prod(m.pid);
+  if (p) p.stock += m.type === 'out' ? m.qty : -m.qty;
+  if (m.type === 'ret') { const o = db.moves.find(x => x.id === m.from); if (o) o.ret = Math.max(0, (o.ret || 0) - m.qty); }
+  db.moves = db.moves.filter(x => x !== m);
+}
+async function verifyPass(pw) {
+  try {
+    const r = await fetch('/api/data?backups=1', { cache: 'no-store', headers: { 'x-app-password': pw } });
+    if (r.status === 200) return true;
+    if (r.status === 401) return false;
+  } catch (e) {}
+  return pw === pass; // serveur injoignable : comparaison avec le mot de passe de la session
+}
+function delMove(id) {
+  const m = db.moves.find(x => x.id === id); if (!m) return;
+  if (cloud === 'local') return alert('La suppression demande le mot de passe du serveur : indisponible en mode local.');
+  const why = moveBlock(m); if (why) return alert(why);
+  const p = prod(m.pid), delta = m.type === 'out' ? '+' : '−', kind = { in: 'Entrée', out: 'Sortie', ret: 'Retour' }[m.type];
+  open(`<form method="dialog" id="df"><h2>Supprimer ce mouvement</h2>
+  <p class="hint">${kind} de ${m.qty} × <b>${esc(p ? p.name : 'produit supprimé')}</b> du ${dateFr(m.date)}.${p ? ` Le stock sera corrigé de ${delta}${m.qty} (${p.stock} → ${p.stock + (m.type === 'out' ? m.qty : -m.qty)}).` : ''} Cette action est définitive.</p>
+  ${field('Mot de passe', 'pw', '', 'type="password" required autocomplete="current-password"')}<p class="hint" id="dh"></p>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri" id="dok">Supprimer</button></div></form>`);
+  $('#df').onsubmit = async e => {
+    e.preventDefault();
+    const b = $('#dok'), h = $('#dh'); b.disabled = true; h.style.color = 'var(--mute)'; h.textContent = 'Vérification…';
+    const ok = await verifyPass(new FormData(e.target).get('pw'));
+    b.disabled = false;
+    if (!ok) { h.style.color = 'var(--bad)'; h.textContent = 'Mot de passe incorrect.'; return; }
+    const cur = db.moves.find(x => x.id === id), again = cur && moveBlock(cur);
+    dlg.close();
+    if (!cur) return;
+    if (again) return alert(again);
+    removeMove(cur); save(); render(); toast('Mouvement supprimé, stock corrigé');
+  };
+}
+
 /* ---------- Export PDF / Word ---------- */
 const plain = v => fcfa(v).replace(/[\u202f\u00a0]/g, ' ');
 const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500); };
@@ -625,7 +670,7 @@ document.addEventListener('click', e => {
   const nav = e.target.closest('#nav button'); if (nav) { view = nav.dataset.view; return render(); }
   const b = e.target.closest('[data-a]'); if (!b) return;
   const p = prod(b.dataset.id);
-  ({ new: () => productForm(), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), demo,
+  ({ new: () => productForm(), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), delmove: () => delMove(b.dataset.id), demo,
     del: () => { if (confirm(`Supprimer « ${p.name} » et son historique ?`)) { db.products = db.products.filter(x => x !== p); db.moves = db.moves.filter(m => m.pid !== p.id); save(); render(); toast('Produit supprimé'); } } })[b.dataset.a]();
 });
 document.addEventListener('input', e => { if (e.target.id === 'q') { q = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#q'); i.focus(); i.setSelectionRange(pos, pos); } });
