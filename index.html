@@ -94,6 +94,8 @@ dialog.wide{width:min(900px,96vw)}dialog.wide form{max-height:90vh;overflow:auto
 .dsc{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600}.dsc.neg{background:#fbf0d9;color:var(--warn)}.dsc.pos{background:#e3f3ec;color:var(--ok)}
 .art{margin-bottom:6px}.art:last-child{margin:0}s{color:var(--mute)}
 @media(max-width:720px){.slh{display:none}.sl{grid-template-columns:1fr 1fr}.sl select{grid-column:1/-1}}
+.stack{display:grid;gap:14px}.og-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:6px}.og-h h2{margin:0}.og-h small{color:var(--mute)}
+.xr{display:grid;grid-template-columns:2.5fr .8fr 34px;gap:8px;align-items:center}#xl{display:grid;gap:8px}.sl small{display:block;color:var(--mute);font-size:12px;font-weight:400}
 
 </style>
 </head>
@@ -104,6 +106,7 @@ dialog.wide{width:min(900px,96vw)}dialog.wide form{max-height:90vh;overflow:auto
     <button data-view="dashboard" class="on">Tableau de bord</button>
     <button data-view="products">Produits</button>
     <button data-view="sales">Ventes</button>
+    <button data-view="outs">Sorties</button>
     <button data-view="moves">Mouvements</button>
   </nav>
   <div class="side-foot">
@@ -132,7 +135,7 @@ const dateFr = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', mo
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(16).slice(2));
 const today = () => new Date().toISOString().slice(0, 10);
 
-let db = load(), view = 'dashboard', q = '', fcat = '', ftype = '', sper = 'month';
+let db = load(), view = 'dashboard', q = '', fcat = '', ftype = '', sper = 'month', ostat = 'open';
 
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.products) && Array.isArray(d.moves)) return norm(d); } catch (e) {}
@@ -149,7 +152,7 @@ const status = p => p.stock <= 0 ? ['out', 'Rupture'] : p.stock <= p.min ? ['low
 const margin = p => p.cost > 0 ? ((p.price - p.cost) / p.price * 100) : 0;
 
 /* ---------- Rendu ---------- */
-const TITLES = { dashboard: 'Tableau de bord', products: 'Produits', sales: 'Ventes', moves: 'Mouvements de stock' };
+const TITLES = { dashboard: 'Tableau de bord', products: 'Produits', sales: 'Ventes', outs: 'Sorties vendeurs', moves: 'Mouvements de stock' };
 function render() {
   $('#title').textContent = TITLES[view];
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
@@ -157,8 +160,9 @@ function render() {
   a.innerHTML = view === 'moves'
     ? '<button class="btn" data-a="in">+ Entrée</button> <button class="btn pri" data-a="out">− Sortie</button>'
     : view === 'sales' ? '<button class="btn pri" data-a="sale">+ Nouvelle vente</button>'
+    : view === 'outs' ? '<button class="btn pri" data-a="out">+ Nouvelle sortie</button>'
     : '<button class="btn" data-a="new">+ Nouveau produit</button> <button class="btn pri" data-a="sale">+ Nouvelle vente</button>';
-  $('#view').innerHTML = { dashboard: vDash, products: vProducts, sales: vSales, moves: vMoves }[view]();
+  $('#view').innerHTML = { dashboard: vDash, products: vProducts, sales: vSales, outs: vOuts, moves: vMoves }[view]();
   a.insertAdjacentHTML('afterbegin', '<button class="btn" data-a="exp">Exporter PDF / Word</button> ');
   fx();
 }
@@ -169,7 +173,7 @@ function vDash() {
   const P = db.products;
   if (!P.length) return empty();
   const units = P.reduce((s, p) => s + p.stock, 0);
-  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0);
+  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0), circ = db.moves.reduce((t, m) => t + outRest(m), 0);
   const cost = P.reduce((s, p) => s + p.stock * p.cost, 0);
   const sale = P.reduce((s, p) => s + p.stock * p.price, 0);
   const alerts = P.filter(p => p.stock <= p.min).sort((a, b) => a.stock - b.stock);
@@ -196,7 +200,8 @@ function vDash() {
     <div class="kpi"><span>Unités en stock</span><b data-count="${units}">${units}</b></div>
     <div class="kpi"><span>Références</span><b data-count="${P.length}">${P.length}</b></div>
     <div class="kpi"><span>Ventes du mois</span><b data-count="${ca}" data-fmt="fcfa">${fcfa(ca)}</b></div>
-    <div class="kpi"><span>Quantité vendue (mois)</span><b data-count="${qv}">${qv}</b></div></div>
+    <div class="kpi"><span>Quantité vendue (mois)</span><b data-count="${qv}">${qv}</b></div>
+    <div class="kpi"><span>Chez les vendeurs</span><b data-count="${circ}">${circ}</b></div></div>
   <div class="grid2">
     <div class="card"><h2>Entrées et sorties · 14 jours</h2><svg class="chart" viewBox="0 0 392 130"><g>${bars}</g>${agg.map((a, i) => i % 3 === 0 ? `<text x="${i * 28 + 14}" y="126" text-anchor="middle">${a.d.slice(8)}/${a.d.slice(5, 7)}</text>` : '').join('')}</svg>
       <p class="legend"><i style="background:var(--ok)"></i>Entrées <i style="background:var(--gold)"></i>Sorties</p></div>
@@ -236,11 +241,11 @@ function vProducts() {
 function movesTable(list) {
   return `<table><thead><tr><th>Date</th><th>Produit</th><th class="num">Qté</th><th class="num">Prix unitaire</th></tr></thead><tbody>${list.map(m => {
     const p = prod(m.pid); return `<tr><td>${dateFr(m.date)}</td><td>${esc(p ? p.name : 'Produit supprimé')}<small>${esc(m.note || '')}</small></td>
-    <td class="num ${m.type === 'in' ? 'in-t' : 'out-t'}">${m.type === 'in' ? '+' : '−'}${m.qty}</td><td class="num">${fcfa(m.unit)}</td></tr>`; }).join('')}</tbody></table>`;
+    <td class="num ${m.type === 'out' ? 'out-t' : 'in-t'}">${m.type === 'out' ? '−' : '+'}${m.qty}</td><td class="num">${fcfa(m.unit)}</td></tr>`; }).join('')}</tbody></table>`;
 }
 function vMoves() {
   const list = db.moves.filter(m => !ftype || m.type === ftype).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
-  return `<div class="bar"><select id="ftype" aria-label="Type"><option value="">Entrées et sorties</option><option value="in" ${ftype === 'in' ? 'selected' : ''}>Entrées</option><option value="out" ${ftype === 'out' ? 'selected' : ''}>Sorties</option></select></div>
+  return `<div class="bar"><select id="ftype" aria-label="Type"><option value="">Entrées et sorties</option><option value="in" ${ftype === 'in' ? 'selected' : ''}>Entrées</option><option value="out" ${ftype === 'out' ? 'selected' : ''}>Sorties</option><option value="ret" ${ftype === 'ret' ? 'selected' : ''}>Retours</option></select></div>
   <div class="card">${list.length ? movesTable(list) : '<p class="empty">Aucun mouvement. Enregistrez une entrée à la réception d’une commande, ou une sortie à chaque vente.</p>'}</div>`;
 }
 function empty() {
@@ -319,7 +324,7 @@ function vSales() {
   <div class="kpis"><div class="kpi hero"><span>Montant total des ventes</span><b>${fcfa(ca)}</b></div><div class="kpi"><span>Quantité vendue</span><b>${qv}</b></div>
   <div class="kpi"><span>Nombre de ventes</span><b>${list.length}</b></div><div class="kpi"><span>Remises accordées</span><b>${fcfa(rem)}</b></div></div>
   <div class="card">${list.length ? `<table><thead><tr><th>N°</th><th>Date</th><th>Client</th><th>Articles vendus</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead><tbody>
-  ${list.map(s => `<tr><td><b>${saleNo(s.n)}</b></td><td>${dateFr(s.date)}</td><td>${esc(s.client || '—')}</td>
+  ${list.map(s => `<tr><td><b>${saleNo(s.n)}</b></td><td>${dateFr(s.date)}</td><td>${esc(s.client || '—')}${s.who ? `<small>Vendeur : ${esc(s.who)}</small>` : ''}</td>
   <td>${s.lines.map(l => `<div class="art">${l.qty} × <b>${esc(l.name)}</b>${dsc(l)}<small>${esc(l.desc)}</small><small>${fcfa(l.unit)} l’unité${l.unit !== l.list ? ` · prix initial <s>${fcfa(l.list)}</s>` : ''}</small></div>`).join('')}</td>
   <td class="num">${saleQty(s)}</td><td class="num"><b>${fcfa(s.total)}</b></td>
   <td><div class="acts"><button class="btn sm" data-a="receipt" data-id="${s.id}">Reçu</button><button class="btn sm bad" data-a="unsale" data-id="${s.id}">Annuler</button></div></td></tr>`).join('')}</tbody></table>`
@@ -390,10 +395,106 @@ function receiptForm(id) {
 }
 function cancelSale(id) {
   const s = db.sales.find(x => x.id === id); if (!s) return;
-  if (!confirm(`Annuler la vente ${saleNo(s.n)} (${fcfa(s.total)}) ? Les quantités seront remises en stock.`)) return;
-  s.lines.forEach(l => { const p = prod(l.pid); if (p) p.stock += l.qty; });
+  if (!confirm(`Annuler la vente ${saleNo(s.n)} (${fcfa(s.total)}) ? Les quantités issues d’une sortie retournent chez le vendeur, les autres sont remises en stock.`)) return;
+  s.lines.forEach(l => { if (l.mid) { const m = db.moves.find(x => x.id === l.mid); if (m) m.sold = Math.max(0, (m.sold || 0) - l.qty); } else { const p = prod(l.pid); if (p) p.stock += l.qty; } });
   db.moves = db.moves.filter(m => m.sale !== s.id); db.sales = db.sales.filter(x => x !== s);
   save(); render(); toast('Vente annulée, stock remis à jour');
+}
+
+/* ---------- Sorties vendeurs : sortie, vente confirmée, retour ---------- */
+function outRest(m) { return m.type === 'out' && !m.sale && m.sold !== undefined ? m.qty - (m.sold || 0) - (m.ret || 0) : 0; }
+function outGroups() {
+  const g = {};
+  db.moves.filter(m => m.type === 'out' && !m.sale && m.sold !== undefined).forEach(m => {
+    const k = m.grp || m.id; (g[k] = g[k] || { id: k, date: m.date, who: m.who || '', ts: m.ts, lines: [] }).lines.push(m);
+  });
+  return Object.values(g).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
+}
+function vOuts() {
+  const all = outGroups(), list = ostat === 'open' ? all.filter(g => g.lines.some(m => outRest(m) > 0)) : all;
+  const head = `<div class="bar"><select id="ostat" aria-label="Affichage"><option value="open" ${ostat === 'open' ? 'selected' : ''}>Sorties en cours</option><option value="all" ${ostat === 'all' ? 'selected' : ''}>Toutes les sorties</option></select></div>`;
+  if (!list.length) return head + '<div class="card empty"><h2>Aucune sortie en cours</h2><p>Quand un vendeur emporte des produits hors du magasin, cliquez sur « Nouvelle sortie ». Le stock est mis à jour tout de suite.</p></div>';
+  return head + `<div class="stack">${list.map(g => {
+    const rest = g.lines.reduce((t, m) => t + outRest(m), 0);
+    return `<div class="card"><div class="og-h"><div><h2>${esc(g.who || 'Sortie sans nom de vendeur')}</h2><small>${dateFr(g.date)} · ${rest ? rest + ' unité(s) chez le vendeur' : 'Soldée'}</small></div>
+    <div class="acts">${rest ? `<button class="btn pri sm" data-a="sellout" data-id="${g.id}">Confirmer une vente</button><button class="btn sm" data-a="backall" data-id="${g.id}">Tout retourner</button>` : '<span class="badge ok">Soldée</span>'}</div></div>
+    <table><thead><tr><th>Produit</th><th class="num">Sortis</th><th class="num">Vendus</th><th class="num">Retournés</th><th class="num">Reste</th><th></th></tr></thead><tbody>
+    ${g.lines.map(m => { const r = outRest(m); return `<tr><td>${esc(prod(m.pid)?.name || 'Produit supprimé')}</td><td class="num">${m.qty}</td><td class="num">${m.sold || 0}</td><td class="num">${m.ret || 0}</td>
+    <td class="num"><span class="badge ${r ? 'low' : 'ok'}">${r}</span></td><td><div class="acts">${r ? `<button class="btn sm" data-a="back" data-id="${m.id}">Retour</button>` : ''}</div></td></tr>`; }).join('')}</tbody></table></div>`;
+  }).join('')}</div>`;
+}
+function exitForm(pid) {
+  const avail = db.products.filter(p => p.stock > 0);
+  if (!avail.length) return toast('Aucun produit en stock');
+  const opts = avail.map(p => `<option value="${p.id}">${esc(p.name)}${p.size ? ' ' + p.size + ' ml' : ''} (stock ${p.stock})</option>`).join('');
+  open(`<form method="dialog" id="ef"><h2>Nouvelle sortie</h2>
+  <p class="hint">Les produits quittent le stock immédiatement. Vous confirmerez ensuite la vente, ou le retour, depuis la page Sorties.</p>
+  <div class="row">${field('Vendeur (qui emporte les produits)', 'who', '', 'maxlength="60"')}${field('Date', 'date', today(), 'type="date" required')}</div>
+  <div id="xl"></div><div><button type="button" class="btn sm" id="xadd">+ Ajouter un produit</button></div><p class="hint" id="xh"></p>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer la sortie</button></div></form>`);
+  const f = $('#ef'), box = $('#xl');
+  const add = id => { box.insertAdjacentHTML('beforeend', `<div class="xr"><select name="p" aria-label="Produit">${opts}</select><input name="q" type="number" min="1" step="1" value="1" required aria-label="Quantité"><button type="button" class="btn sm bad" data-rm aria-label="Retirer">✕</button></div>`); box.lastElementChild.querySelector('select').value = id; };
+  add(avail.some(p => p.id === pid) ? pid : avail[0].id);
+  $('#xadd').onclick = () => add(avail[0].id);
+  box.onclick = e => { const b = e.target.closest('[data-rm]'); if (b && box.children.length > 1) b.closest('.xr').remove(); };
+  f.onsubmit = e => {
+    e.preventDefault();
+    const L = [...box.querySelectorAll('.xr')].map(r => ({ p: prod(r.querySelector('[name=p]').value), n: parseInt(r.querySelector('[name=q]').value, 10) }));
+    const used = {}; L.forEach(l => used[l.p.id] = (used[l.p.id] || 0) + l.n);
+    const bad = Object.keys(used).map(id => prod(id)).find(p => used[p.id] > p.stock);
+    if (bad) { const h = $('#xh'); h.textContent = `Stock insuffisant pour « ${bad.name} » : il reste ${bad.stock} unité(s).`; h.style.color = 'var(--bad)'; return; }
+    const who = f.elements.who.value.trim(), date = f.elements.date.value, grp = uid();
+    L.forEach(l => { l.p.stock -= l.n; db.moves.push({ id: uid(), ts: Date.now(), pid: l.p.id, type: 'out', qty: l.n, unit: l.p.price, date, note: 'Sortie' + (who ? ' · ' + who : ''), who, grp, sold: 0, ret: 0 }); });
+    save(); dlg.close(); view = 'outs'; render(); toast('Sortie enregistrée, stock mis à jour');
+  };
+}
+function giveBack(m, n) {
+  const p = prod(m.pid); n = Math.min(n, outRest(m)); if (!p || !(n >= 1)) return;
+  m.ret = (m.ret || 0) + n; p.stock += n;
+  db.moves.push({ id: uid(), ts: Date.now(), pid: m.pid, type: 'ret', qty: n, unit: m.unit, date: today(), note: 'Retour' + (m.who ? ' · ' + m.who : ''), from: m.id });
+}
+function backForm(mid) {
+  const m = db.moves.find(x => x.id === mid), p = m && prod(m.pid), r = m ? outRest(m) : 0;
+  if (!p || r < 1) return;
+  open(`<form method="dialog" id="bk2"><h2>Retour en stock</h2><p class="hint">${esc(p.name)} : ${r} unité(s) encore chez le vendeur.</p>
+  ${field('Quantité retournée', 'n', r, `type="number" min="1" max="${r}" step="1" required`)}
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Remettre en stock</button></div></form>`);
+  $('#bk2').onsubmit = e => { giveBack(m, parseInt(new FormData(e.target).get('n'), 10)); save(); render(); toast('Retour enregistré, stock mis à jour'); };
+}
+function backAll(gid) {
+  const g = outGroups().find(x => x.id === gid); if (!g) return;
+  const n = g.lines.reduce((t, m) => t + outRest(m), 0);
+  if (!n || !confirm(`Remettre en stock les ${n} unité(s) restantes de cette sortie ?`)) return;
+  g.lines.forEach(m => giveBack(m, outRest(m))); save(); render(); toast('Retour enregistré, stock mis à jour');
+}
+function saleFromExit(gid) {
+  const g = outGroups().find(x => x.id === gid); if (!g) return;
+  const L = g.lines.filter(m => outRest(m) > 0 && prod(m.pid)); if (!L.length) return;
+  dlg.classList.add('wide'); dlg.addEventListener('close', () => dlg.classList.remove('wide'), { once: true });
+  open(`<form method="dialog" id="se"><h2>Confirmer la vente</h2>
+  <p class="hint">${esc(g.who || 'Sortie')} · ${dateFr(g.date)}. Indiquez la quantité réellement vendue de chaque produit. Le reste demeure chez le vendeur ; vous pourrez ensuite le retourner en stock.</p>
+  <div class="row">${field('Date de la vente', 'date', today(), 'type="date" required')}${field('Client (facultatif)', 'client', '', 'maxlength="80"')}</div>
+  <div class="sl slh"><span>Produit</span><span>Vendus</span><span class="r">Prix initial</span><span>Prix négocié</span><span class="r">Total</span><span></span></div>
+  ${L.map(m => { const p = prod(m.pid); return `<div class="sl" data-m="${m.id}"><span><b>${esc(p.name)}</b><small>reste ${outRest(m)} chez le vendeur</small></span><input name="q" type="number" min="0" max="${outRest(m)}" step="1" value="0" aria-label="Quantité vendue"><span class="lp r">${fcfa(p.price)}</span><input name="u" type="number" min="0" step="any" value="${p.price}" aria-label="Prix négocié"><b class="lt r"></b><span></span></div>`; }).join('')}
+  <div class="tot"><div><span>Remise négociée</span><b id="rem">0 FCFA</b></div><div><span>Total à encaisser</span><b id="tot">0 FCFA</b></div></div><p class="hint" id="sh"></p>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer la vente</button></div></form>`);
+  const f = $('#se'), rows = () => [...f.querySelectorAll('.sl[data-m]')];
+  const calc = () => { let tot = 0, rem = 0;
+    rows().forEach(r => { const m = db.moves.find(x => x.id === r.dataset.m), p = prod(m.pid), n = parseInt(r.querySelector('[name=q]').value, 10) || 0, u = +r.querySelector('[name=u]').value || 0, pc = p.price ? Math.round((u - p.price) / p.price * 100) : 0;
+      r.querySelector('.lt').innerHTML = fcfa(n * u) + (pc ? `<span class="dsc ${pc < 0 ? 'neg' : 'pos'}">${pc > 0 ? '+' : ''}${pc} %</span>` : ''); tot += n * u; rem += n * (p.price - u); });
+    $('#tot').textContent = fcfa(tot); $('#rem').textContent = fcfa(rem); };
+  f.oninput = calc; calc();
+  f.onsubmit = e => {
+    e.preventDefault();
+    const R = rows().map(r => ({ m: db.moves.find(x => x.id === r.dataset.m), n: parseInt(r.querySelector('[name=q]').value, 10) || 0, u: +r.querySelector('[name=u]').value })).filter(x => x.n > 0);
+    const h = $('#sh'); h.style.color = 'var(--bad)';
+    if (!R.length) { h.textContent = 'Indiquez au moins une quantité vendue.'; return; }
+    if (R.some(x => x.n > outRest(x.m))) { h.textContent = 'Une quantité dépasse ce qui reste chez le vendeur.'; return; }
+    const date = f.elements.date.value, client = f.elements.client.value.trim();
+    const sale = { id: uid(), n: db.sales.reduce((t, s) => Math.max(t, s.n), 0) + 1, ts: Date.now(), date, client, who: g.who, lines: [], total: 0 };
+    R.forEach(({ m, n, u }) => { const p = prod(m.pid); m.sold = (m.sold || 0) + n; sale.total += n * u; sale.lines.push({ pid: p.id, name: p.name, desc: descOf(p), qty: n, list: p.price, unit: u, mid: m.id }); });
+    db.sales.push(sale); save(); dlg.close(); render(); toast('Vente confirmée'); receiptForm(sale.id);
+  };
 }
 
 /* ---------- Export PDF / Word ---------- */
@@ -401,6 +502,9 @@ const plain = v => fcfa(v).replace(/[\u202f\u00a0]/g, ' ');
 const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500); };
 function docData(kind) {
   const P = [...db.products].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (kind === 'outs') { const R = db.moves.filter(m => outRest(m) > 0).sort((a, b) => b.date.localeCompare(a.date));
+    return { file: 'sorties-en-cours', title: 'Sorties en cours (chez les vendeurs)', head: ['Date', 'Vendeur', 'Produit', 'Sortis', 'Vendus', 'Retournés', 'Reste'],
+      rows: R.map(m => [dateFr(m.date), m.who || '-', prod(m.pid)?.name || '-', m.qty, m.sold || 0, m.ret || 0, outRest(m)]), foot: `${R.reduce((t, m) => t + outRest(m), 0)} unité(s) chez les vendeurs` }; }
   if (kind === 'sales') { const S = [...db.sales].sort((a, b) => b.date.localeCompare(a.date) || b.n - a.n), t = S.reduce((x, y) => x + y.total, 0);
     return { file: 'ventes', title: 'Ventes', head: ['N°', 'Date', 'Client', 'Articles vendus', 'Qté', 'Total', 'Remise'],
       rows: S.map(x => [saleNo(x.n), dateFr(x.date), x.client || '-', x.lines.map(l => `${l.qty} x ${l.name} (${plain(l.unit)})`).join(' ; '), saleQty(x), plain(x.total), plain(saleRem(x))]), foot: `${S.length} vente(s)  |  Total : ${plain(t)}` }; }
@@ -409,7 +513,7 @@ function docData(kind) {
       rows: L.map(p => [p.name, p.supplier || '-', p.stock, p.min, plain(p.cost)]), foot: `${L.length} produit(s) à commander` }; }
   if (kind === 'moves') { const M = [...db.moves].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
     return { file: 'mouvements', title: 'Historique des mouvements', head: ['Date', 'Type', 'Produit', 'Qté', 'Prix unitaire', 'Total', 'Note'],
-      rows: M.map(m => [dateFr(m.date), m.type === 'in' ? 'Entrée' : 'Sortie', prod(m.pid)?.name || 'Produit supprimé', m.qty, plain(m.unit), plain(m.unit * m.qty), m.note || '']), foot: `${M.length} mouvement(s)` }; }
+      rows: M.map(m => [dateFr(m.date), ({ in: 'Entrée', out: 'Sortie', ret: 'Retour' })[m.type], prod(m.pid)?.name || 'Produit supprimé', m.qty, plain(m.unit), plain(m.unit * m.qty), m.note || '']), foot: `${M.length} mouvement(s)` }; }
   const cost = P.reduce((s, p) => s + p.stock * p.cost, 0), sale = P.reduce((s, p) => s + p.stock * p.price, 0);
   return { file: 'inventaire', title: 'Inventaire du stock', head: ['Produit', 'Marque', 'Catégorie', 'Fournisseur', 'Prix achat', 'Prix vente', 'Stock', 'Valeur (achat)'],
     rows: P.map(p => [p.name, p.brand || '-', p.cat, p.supplier || '-', plain(p.cost), plain(p.price), p.stock, plain(p.stock * p.cost)]),
@@ -433,7 +537,7 @@ td.t{background:#f4ecdc;font-weight:bold;text-align:right;color:#2a1b3d}</style>
 }
 function exportForm() {
   open(`<form method="dialog" id="xf"><h2>Exporter un document</h2>
-  <label class="f">Document<select name="kind"><option value="inv">Inventaire du stock</option><option value="low">Produits à réapprovisionner</option><option value="sales">Ventes</option><option value="moves">Historique des mouvements</option></select></label>
+  <label class="f">Document<select name="kind"><option value="inv">Inventaire du stock</option><option value="low">Produits à réapprovisionner</option><option value="sales">Ventes</option><option value="outs">Sorties en cours chez les vendeurs</option><option value="moves">Historique des mouvements</option></select></label>
   <div class="fmt"><label><input type="radio" name="fmt" value="pdf" checked><span><b>PDF</b><small>Prêt à imprimer ou à envoyer</small></span></label>
   <label><input type="radio" name="fmt" value="word"><span><b>Word</b><small>Modifiable (.doc)</small></span></label></div>
   <p class="hint">PDF : dans la fenêtre d’impression qui s’ouvre, choisissez « Enregistrer au format PDF » comme imprimante.</p><div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Télécharger</button></div></form>`);
@@ -531,11 +635,11 @@ document.addEventListener('click', e => {
   const nav = e.target.closest('#nav button'); if (nav) { view = nav.dataset.view; return render(); }
   const b = e.target.closest('[data-a]'); if (!b) return;
   const p = prod(b.dataset.id);
-  ({ new: () => productForm(), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => moveForm('out', b.dataset.id), demo,
+  ({ new: () => productForm(), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), backall: () => backAll(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), demo,
     del: () => { if (confirm(`Supprimer « ${p.name} » et son historique ?`)) { db.products = db.products.filter(x => x !== p); db.moves = db.moves.filter(m => m.pid !== p.id); save(); render(); toast('Produit supprimé'); } } })[b.dataset.a]();
 });
 document.addEventListener('input', e => { if (e.target.id === 'q') { q = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#q'); i.focus(); i.setSelectionRange(pos, pos); } });
-document.addEventListener('change', e => { if (e.target.id === 'fcat') { fcat = e.target.value; render(); } if (e.target.id === 'ftype') { ftype = e.target.value; render(); } if (e.target.id === 'sper') { sper = e.target.value; render(); } });
+document.addEventListener('change', e => { if (e.target.id === 'fcat') { fcat = e.target.value; render(); } if (e.target.id === 'ftype') { ftype = e.target.value; render(); } if (e.target.id === 'sper') { sper = e.target.value; render(); } if (e.target.id === 'ostat') { ostat = e.target.value; render(); } });
 $('#export').onclick = () => {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' }));
   a.download = `planete2-stock-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
