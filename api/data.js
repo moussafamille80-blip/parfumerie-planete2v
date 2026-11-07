@@ -47,7 +47,7 @@ module.exports = async (req, res) => {
       if (!valid(b.db)) return res.status(400).json({ error: 'format' });
       const cur = await current();
       if (b.rev !== cur.rev) return res.status(409).json(cur); // quelqu'un d'autre a modifié entre-temps
-      const next = { rev: cur.rev + 1, db: { products: b.db.products, moves: b.db.moves, sales: Array.isArray(b.db.sales) ? b.db.sales : [], cash: Array.isArray(b.db.cash) ? b.db.cash : [] } };
+      const next = { rev: cur.rev + 1, db: { products: b.db.products, moves: b.db.moves, sales: Array.isArray(b.db.sales) ? b.db.sales : [], cash: Array.isArray(b.db.cash) ? b.db.cash : [], orders: Array.isArray(b.db.orders) ? b.db.orders : [], cap: Array.isArray(b.db.cap) ? b.db.cap : [] } };
       await persist(next);
       return res.status(200).json({ rev: next.rev });
     }
