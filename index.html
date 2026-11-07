@@ -96,6 +96,8 @@ dialog.wide{width:min(900px,96vw)}dialog.wide form{max-height:90vh;overflow:auto
 @media(max-width:720px){.slh{display:none}.sl{grid-template-columns:1fr 1fr}.sl select{grid-column:1/-1}}
 .stack{display:grid;gap:14px}.og-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:6px}.og-h h2{margin:0}.og-h small{color:var(--mute)}
 .xr{display:grid;grid-template-columns:2.5fr .8fr 34px;gap:8px;align-items:center}#xl{display:grid;gap:8px}.sl small{display:block;color:var(--mute);font-size:12px;font-weight:400}
+.bal{padding:10px 12px;border-radius:10px;background:#faf5ea;border:1px solid #efe2c4;font-size:14px}.bal.neg{background:#f9e1e6;border-color:#efb9c4;color:var(--bad)}.bal:empty{display:none}
+textarea{resize:vertical;font:inherit}
 
 </style>
 </head>
@@ -106,6 +108,7 @@ dialog.wide{width:min(900px,96vw)}dialog.wide form{max-height:90vh;overflow:auto
     <button data-view="dashboard" class="on">Tableau de bord</button>
     <button data-view="products">Produits</button>
     <button data-view="sales">Ventes</button>
+    <button data-view="cash">Décaissements</button>
     <button data-view="moves">Mouvements</button>
   </nav>
   <div class="side-foot">
@@ -138,10 +141,11 @@ let db = load(), view = 'dashboard', q = '', fcat = '', ftype = '', sper = 'mont
 
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.products) && Array.isArray(d.moves)) return norm(d); } catch (e) {}
-  return { products: [], moves: [], sales: [] };
+  return { products: [], moves: [], sales: [], cash: [] };
 }
 function norm(d) { // adapte les anciennes données au fonctionnement actuel
   if (!Array.isArray(d.sales)) d.sales = [];
+  if (!Array.isArray(d.cash)) d.cash = [];
   d.moves.forEach(m => { if (m.type === 'out' && !m.sale && m.sold === undefined) { m.sold = 0; m.ret = 0; } }); // anciennes sorties : en sortie, prêtes pour Vente ou Retour
   return d;
 }
@@ -155,7 +159,7 @@ const status = p => p.stock <= 0 ? ['out', 'Rupture'] : p.stock <= p.min ? ['low
 const margin = p => p.cost > 0 ? ((p.price - p.cost) / p.price * 100) : 0;
 
 /* ---------- Rendu ---------- */
-const TITLES = { dashboard: 'Tableau de bord', products: 'Produits', sales: 'Ventes', moves: 'Mouvements de stock' };
+const TITLES = { dashboard: 'Tableau de bord', products: 'Produits', sales: 'Ventes', cash: 'Décaissements', moves: 'Mouvements de stock' };
 function render() {
   $('#title').textContent = TITLES[view];
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
@@ -163,8 +167,9 @@ function render() {
   a.innerHTML = view === 'moves'
     ? '<button class="btn" data-a="in">+ Entrée</button> <button class="btn pri" data-a="out">− Sortie</button>'
     : view === 'sales' ? '<button class="btn pri" data-a="sale">+ Nouvelle vente</button>'
+    : view === 'cash' ? '<button class="btn pri" data-a="cash">+ Nouveau décaissement</button>'
     : '<button class="btn" data-a="new">+ Nouveau produit</button> <button class="btn pri" data-a="sale">+ Nouvelle vente</button>';
-  $('#view').innerHTML = { dashboard: vDash, products: vProducts, sales: vSales, moves: vMoves }[view]();
+  $('#view').innerHTML = { dashboard: vDash, products: vProducts, sales: vSales, cash: vCash, moves: vMoves }[view]();
   a.insertAdjacentHTML('afterbegin', '<button class="btn" data-a="exp">Exporter PDF / Word</button> ');
   fx();
 }
@@ -175,7 +180,7 @@ function vDash() {
   const P = db.products;
   if (!P.length) return empty();
   const units = P.reduce((s, p) => s + p.stock, 0);
-  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0), circ = db.moves.reduce((t, m) => t + outRest(m), 0);
+  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0), circ = db.moves.reduce((t, m) => t + outRest(m), 0), dm = db.cash.filter(x => x.date.startsWith(today().slice(0, 7))).reduce((t, x) => t + x.amount, 0);
   const cost = P.reduce((s, p) => s + p.stock * p.cost, 0);
   const sale = P.reduce((s, p) => s + p.stock * p.price, 0);
   const alerts = P.filter(p => p.stock <= p.min).sort((a, b) => a.stock - b.stock);
@@ -201,7 +206,8 @@ function vDash() {
     <div class="kpi"><span>Marge potentielle</span><b data-count="${sale - cost}" data-fmt="fcfa">${fcfa(sale - cost)}</b></div>
     <div class="kpi"><span>Unités en stock</span><b data-count="${units}">${units}</b></div>
     <div class="kpi"><span>Références</span><b data-count="${P.length}">${P.length}</b></div>
-    <div class="kpi"><span>Ventes du mois</span><b data-count="${ca}" data-fmt="fcfa">${fcfa(ca)}</b></div>
+    <div class="kpi"><span>Ventes du mois (après décaissements)</span><b data-count="${ca - dm}" data-fmt="fcfa">${fcfa(ca - dm)}</b></div>
+    <div class="kpi"><span>Décaissé ce mois</span><b data-count="${dm}" data-fmt="fcfa">${fcfa(dm)}</b></div>
     <div class="kpi"><span>Quantité vendue (mois)</span><b data-count="${qv}">${qv}</b></div>
     <div class="kpi"><span>Sorties en cours</span><b data-count="${circ}">${circ}</b></div></div>
   <div class="grid2">
@@ -326,11 +332,12 @@ function inPeriod(d) {
 }
 function vSales() {
   const list = db.sales.filter(s => inPeriod(s.date)).sort((a, b) => b.date.localeCompare(a.date) || b.n - a.n);
-  const ca = list.reduce((s, x) => s + x.total, 0), qv = list.reduce((s, x) => s + saleQty(x), 0), rem = list.reduce((s, x) => s + saleRem(x), 0);
+  const ca = list.reduce((s, x) => s + x.total, 0), qv = list.reduce((s, x) => s + saleQty(x), 0), rem = list.reduce((s, x) => s + saleRem(x), 0), dc = db.cash.filter(c => inPeriod(c.date)).reduce((s, c) => s + c.amount, 0);
   const P = [['day', 'Aujourd’hui'], ['week', '7 derniers jours'], ['month', 'Ce mois'], ['all', 'Tout']];
   return `<div class="bar"><select id="sper" aria-label="Période">${P.map(([v, l]) => `<option value="${v}" ${v === sper ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="kpis"><div class="kpi hero"><span>Montant total des ventes</span><b>${fcfa(ca)}</b></div><div class="kpi"><span>Quantité vendue</span><b>${qv}</b></div>
-  <div class="kpi"><span>Nombre de ventes</span><b>${list.length}</b></div><div class="kpi"><span>Remises accordées</span><b>${fcfa(rem)}</b></div></div>
+  <div class="kpi"><span>Nombre de ventes</span><b>${list.length}</b></div><div class="kpi"><span>Remises accordées</span><b>${fcfa(rem)}</b></div>
+  <div class="kpi"><span>Décaissements</span><b>${fcfa(dc)}</b></div><div class="kpi"><span>Solde après décaissements</span><b>${fcfa(ca - dc)}</b></div></div>
   <div class="card">${list.length ? `<table><thead><tr><th>N°</th><th>Date</th><th>Client</th><th>Articles vendus</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead><tbody>
   ${list.map(s => `<tr><td><b>${saleNo(s.n)}</b></td><td>${dateFr(s.date)}</td><td>${esc(s.client || '—')}</td>
   <td>${s.lines.map(l => `<div class="art">${l.qty} × <b>${esc(l.name)}</b>${dsc(l)}<small>${esc(l.desc)}</small><small>${fcfa(l.unit)} l’unité${l.unit !== l.list ? ` · prix initial <s>${fcfa(l.list)}</s>` : ''}</small></div>`).join('')}</td>
@@ -532,6 +539,60 @@ function delMove(id) {
   };
 }
 
+/* ---------- Décaissements (ravitaillement auprès des fournisseurs) ---------- */
+function vCash() {
+  const PER = [['day', 'Aujourd’hui'], ['week', '7 derniers jours'], ['month', 'Ce mois'], ['all', 'Tout']];
+  const list = db.cash.filter(c => inPeriod(c.date)).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
+  const tot = list.reduce((s, c) => s + c.amount, 0), ventes = db.sales.filter(s => inPeriod(s.date)).reduce((s, x) => s + x.total, 0);
+  return `<div class="bar"><select id="sper" aria-label="Période">${PER.map(([v, l]) => `<option value="${v}" ${v === sper ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="kpis"><div class="kpi hero"><span>Total décaissé</span><b>${fcfa(tot)}</b></div><div class="kpi"><span>Ventes de la période</span><b>${fcfa(ventes)}</b></div>
+  <div class="kpi"><span>Solde après décaissements</span><b>${fcfa(ventes - tot)}</b></div></div>
+  <div class="card">${list.length ? `<table><thead><tr><th>Date</th><th>Raison du décaissement</th><th class="num">Montant</th><th></th></tr></thead><tbody>
+  ${list.map(c => `<tr><td>${dateFr(c.date)}</td><td>${esc(c.reason)}</td><td class="num"><b>${fcfa(c.amount)}</b></td>
+  <td><div class="acts"><button class="btn sm bad" data-a="delcash" data-id="${c.id}" aria-label="Supprimer ce décaissement">Supprimer</button></div></td></tr>`).join('')}</tbody></table>`
+    : '<p class="empty">Aucun décaissement sur cette période. Cliquez sur « Nouveau décaissement » pour en enregistrer un.</p>'}</div>`;
+}
+function cashForm() {
+  open(`<form method="dialog" id="cf"><h2>Nouveau décaissement</h2>
+  <p class="hint">Somme prélevée sur les ventes pour le ravitaillement en parfums auprès des fournisseurs. Elle est déduite automatiquement des ventes du mois.</p>
+  <div class="row">${field('Date du décaissement', 'date', today(), 'type="date" required')}${field('Montant (FCFA)', 'amount', '', 'type="number" min="1" step="any" required')}</div>
+  <label class="f">Raison du décaissement<textarea name="reason" rows="3" required maxlength="200" placeholder="Ex. : achat de 20 flacons chez le fournisseur"></textarea></label>
+  <div class="bal" id="bal"></div>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer le décaissement</button></div></form>`);
+  const f = $('#cf'), bal = $('#bal');
+  const upd = () => {
+    const d = f.elements.date.value, amt = +f.elements.amount.value || 0; if (!d) { bal.textContent = ''; return; }
+    const mo = d.slice(0, 7), net = db.sales.filter(s => s.date.startsWith(mo)).reduce((t, s) => t + s.total, 0) - db.cash.filter(c => c.date.startsWith(mo)).reduce((t, c) => t + c.amount, 0);
+    const lab = new Date(mo + '-01T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    bal.classList.toggle('neg', net - amt < 0);
+    bal.textContent = `Ventes de ${lab} après décaissements : ${fcfa(net)}` + (amt ? ` → ${fcfa(net - amt)} avec ce décaissement` : '') + (net - amt < 0 ? ' (supérieur aux ventes du mois)' : '');
+  };
+  f.oninput = upd; upd();
+  f.onsubmit = e => {
+    const amount = +f.elements.amount.value, reason = f.elements.reason.value.trim();
+    if (!(amount > 0) || !reason) { e.preventDefault(); return; }
+    db.cash.push({ id: uid(), ts: Date.now(), date: f.elements.date.value, amount, reason });
+    save(); render(); toast('Décaissement enregistré, ventes du mois mises à jour');
+  };
+}
+function askPass(title, html, onOk) {
+  if (cloud === 'local') return alert('Cette action demande le mot de passe du serveur : indisponible en mode local.');
+  open(`<form method="dialog" id="pf2"><h2>${esc(title)}</h2><p class="hint">${html}</p>${field('Mot de passe', 'pw', '', 'type="password" required autocomplete="current-password"')}<p class="hint" id="ph"></p>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri" id="pok">Confirmer</button></div></form>`);
+  $('#pf2').onsubmit = async e => {
+    e.preventDefault();
+    const b = $('#pok'), h = $('#ph'); b.disabled = true; h.style.color = 'var(--mute)'; h.textContent = 'Vérification…';
+    const ok = await verifyPass(new FormData(e.target).get('pw')); b.disabled = false;
+    if (!ok) { h.style.color = 'var(--bad)'; h.textContent = 'Mot de passe incorrect.'; return; }
+    dlg.close(); onOk();
+  };
+}
+function delCash(id) {
+  const c = db.cash.find(x => x.id === id); if (!c) return;
+  askPass('Supprimer ce décaissement', `${fcfa(c.amount)} du ${dateFr(c.date)} : ${esc(c.reason)}.<br>Les ventes du mois augmenteront de nouveau de ce montant.`,
+    () => { db.cash = db.cash.filter(x => x.id !== id); save(); render(); toast('Décaissement supprimé'); });
+}
+
 /* ---------- Export PDF / Word ---------- */
 const plain = v => fcfa(v).replace(/[\u202f\u00a0]/g, ' ');
 const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500); };
@@ -540,6 +601,8 @@ function docData(kind) {
   if (kind === 'outs') { const R = db.moves.filter(m => outRest(m) > 0).sort((a, b) => b.date.localeCompare(a.date));
     return { file: 'sorties-en-cours', title: 'Sorties en cours', head: ['Date', 'Produit', 'Sortis', 'Vendus', 'Retournés', 'Reste'],
       rows: R.map(m => [dateFr(m.date), prod(m.pid)?.name || '-', m.qty, m.sold || 0, m.ret || 0, outRest(m)]), foot: `${R.reduce((t, m) => t + outRest(m), 0)} unité(s) en sortie` }; }
+  if (kind === 'cash') { const C = [...db.cash].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts), t = C.reduce((s, c) => s + c.amount, 0);
+    return { file: 'decaissements', title: 'Décaissements', head: ['Date', 'Raison', 'Montant'], rows: C.map(c => [dateFr(c.date), c.reason, plain(c.amount)]), foot: `${C.length} décaissement(s)  |  Total : ${plain(t)}` }; }
   if (kind === 'sales') { const S = [...db.sales].sort((a, b) => b.date.localeCompare(a.date) || b.n - a.n), t = S.reduce((x, y) => x + y.total, 0);
     return { file: 'ventes', title: 'Ventes', head: ['N°', 'Date', 'Client', 'Articles vendus', 'Qté', 'Total', 'Remise'],
       rows: S.map(x => [saleNo(x.n), dateFr(x.date), x.client || '-', x.lines.map(l => `${l.qty} x ${l.name} (${plain(l.unit)})`).join(' ; '), saleQty(x), plain(x.total), plain(saleRem(x))]), foot: `${S.length} vente(s)  |  Total : ${plain(t)}` }; }
@@ -572,7 +635,7 @@ td.t{background:#f4ecdc;font-weight:bold;text-align:right;color:#2a1b3d}</style>
 }
 function exportForm() {
   open(`<form method="dialog" id="xf"><h2>Exporter un document</h2>
-  <label class="f">Document<select name="kind"><option value="inv">Inventaire du stock</option><option value="low">Produits à réapprovisionner</option><option value="sales">Ventes</option><option value="outs">Sorties en cours</option><option value="moves">Historique des mouvements</option></select></label>
+  <label class="f">Document<select name="kind"><option value="inv">Inventaire du stock</option><option value="low">Produits à réapprovisionner</option><option value="sales">Ventes</option><option value="cash">Décaissements</option><option value="outs">Sorties en cours</option><option value="moves">Historique des mouvements</option></select></label>
   <div class="fmt"><label><input type="radio" name="fmt" value="pdf" checked><span><b>PDF</b><small>Prêt à imprimer ou à envoyer</small></span></label>
   <label><input type="radio" name="fmt" value="word"><span><b>Word</b><small>Modifiable (.doc)</small></span></label></div>
   <p class="hint">PDF : dans la fenêtre d’impression qui s’ouvre, choisissez « Enregistrer au format PDF » comme imprimante.</p><div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Télécharger</button></div></form>`);
@@ -670,7 +733,7 @@ document.addEventListener('click', e => {
   const nav = e.target.closest('#nav button'); if (nav) { view = nav.dataset.view; return render(); }
   const b = e.target.closest('[data-a]'); if (!b) return;
   const p = prod(b.dataset.id);
-  ({ new: () => productForm(), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), delmove: () => delMove(b.dataset.id), demo,
+  ({ new: () => productForm(), cash: () => cashForm(), delcash: () => delCash(b.dataset.id), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), delmove: () => delMove(b.dataset.id), demo,
     del: () => { if (confirm(`Supprimer « ${p.name} » et son historique ?`)) { db.products = db.products.filter(x => x !== p); db.moves = db.moves.filter(m => m.pid !== p.id); save(); render(); toast('Produit supprimé'); } } })[b.dataset.a]();
 });
 document.addEventListener('input', e => { if (e.target.id === 'q') { q = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#q'); i.focus(); i.setSelectionRange(pos, pos); } });
