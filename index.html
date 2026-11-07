@@ -98,6 +98,8 @@ dialog.wide{width:min(900px,96vw)}dialog.wide form{max-height:90vh;overflow:auto
 .xr{display:grid;grid-template-columns:2.5fr .8fr 34px;gap:8px;align-items:center}#xl{display:grid;gap:8px}.sl small{display:block;color:var(--mute);font-size:12px;font-weight:400}
 .bal{padding:10px 12px;border-radius:10px;background:#faf5ea;border:1px solid #efe2c4;font-size:14px}.bal.neg{background:#f9e1e6;border-color:#efb9c4;color:var(--bad)}.bal:empty{display:none}
 textarea{resize:vertical;font:inherit}
+.ol{display:grid;grid-template-columns:2.4fr .7fr 1.2fr 1.2fr 34px;gap:8px;align-items:center}.ol select,.ol input{padding:8px 10px}.olh{color:var(--mute);font-size:12px;font-weight:500}#olines{display:grid;gap:8px}
+@media(max-width:720px){.olh{display:none}.ol{grid-template-columns:1fr 1fr}.ol select,.ol>b:first-child{grid-column:1/-1}}
 
 </style>
 </head>
@@ -109,6 +111,7 @@ textarea{resize:vertical;font:inherit}
     <button data-view="products">Produits</button>
     <button data-view="sales">Ventes</button>
     <button data-view="cash">Décaissements</button>
+    <button data-view="orders">Commandes</button>
     <button data-view="moves">Mouvements</button>
   </nav>
   <div class="side-foot">
@@ -137,15 +140,17 @@ const dateFr = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', mo
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(16).slice(2));
 const today = () => new Date().toISOString().slice(0, 10);
 
-let db = load(), view = 'dashboard', q = '', fcat = '', ftype = '', sper = 'month';
+let db = load(), view = 'dashboard', q = '', fcat = '', ftype = '', sper = 'month', ofilt = 'pending';
 
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.products) && Array.isArray(d.moves)) return norm(d); } catch (e) {}
-  return { products: [], moves: [], sales: [], cash: [] };
+  return { products: [], moves: [], sales: [], cash: [], orders: [], cap: [] };
 }
 function norm(d) { // adapte les anciennes données au fonctionnement actuel
   if (!Array.isArray(d.sales)) d.sales = [];
   if (!Array.isArray(d.cash)) d.cash = [];
+  if (!Array.isArray(d.orders)) d.orders = [];
+  if (!Array.isArray(d.cap)) d.cap = [];
   d.moves.forEach(m => { if (m.type === 'out' && !m.sale && m.sold === undefined) { m.sold = 0; m.ret = 0; } }); // anciennes sorties : en sortie, prêtes pour Vente ou Retour
   return d;
 }
@@ -159,7 +164,7 @@ const status = p => p.stock <= 0 ? ['out', 'Rupture'] : p.stock <= p.min ? ['low
 const margin = p => p.cost > 0 ? ((p.price - p.cost) / p.price * 100) : 0;
 
 /* ---------- Rendu ---------- */
-const TITLES = { dashboard: 'Tableau de bord', products: 'Produits', sales: 'Ventes', cash: 'Décaissements', moves: 'Mouvements de stock' };
+const TITLES = { dashboard: 'Tableau de bord', products: 'Produits', sales: 'Ventes', cash: 'Décaissements', orders: 'Commandes fournisseurs', moves: 'Mouvements de stock' };
 function render() {
   $('#title').textContent = TITLES[view];
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
@@ -167,9 +172,10 @@ function render() {
   a.innerHTML = view === 'moves'
     ? '<button class="btn" data-a="in">+ Entrée</button> <button class="btn pri" data-a="out">− Sortie</button>'
     : view === 'sales' ? '<button class="btn pri" data-a="sale">+ Nouvelle vente</button>'
-    : view === 'cash' ? '<button class="btn pri" data-a="cash">+ Nouveau décaissement</button>'
+    : view === 'cash' ? '<button class="btn" data-a="cap">+ Ajouter du capital</button> <button class="btn pri" data-a="cash">+ Nouveau décaissement</button>'
+    : view === 'orders' ? '<button class="btn pri" data-a="order">+ Nouvelle commande</button>'
     : '<button class="btn" data-a="new">+ Nouveau produit</button> <button class="btn pri" data-a="sale">+ Nouvelle vente</button>';
-  $('#view').innerHTML = { dashboard: vDash, products: vProducts, sales: vSales, cash: vCash, moves: vMoves }[view]();
+  $('#view').innerHTML = { dashboard: vDash, products: vProducts, sales: vSales, cash: vCash, orders: vOrders, moves: vMoves }[view]();
   a.insertAdjacentHTML('afterbegin', '<button class="btn" data-a="exp">Exporter PDF / Word</button> ');
   fx();
 }
@@ -180,7 +186,7 @@ function vDash() {
   const P = db.products;
   if (!P.length) return empty();
   const units = P.reduce((s, p) => s + p.stock, 0);
-  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0), circ = db.moves.reduce((t, m) => t + outRest(m), 0), dm = db.cash.filter(x => x.date.startsWith(today().slice(0, 7))).reduce((t, x) => t + x.amount, 0);
+  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0), circ = db.moves.reduce((t, m) => t + outRest(m), 0), dm = db.cash.filter(x => x.src !== 'capital' && x.date.startsWith(today().slice(0, 7))).reduce((t, x) => t + x.amount, 0), capD = capIn() - capOut(), pendAmt = db.orders.reduce((t, o) => t + orderRestAmt(o), 0);
   const cost = P.reduce((s, p) => s + p.stock * p.cost, 0);
   const sale = P.reduce((s, p) => s + p.stock * p.price, 0);
   const alerts = P.filter(p => p.stock <= p.min).sort((a, b) => a.stock - b.stock);
@@ -207,7 +213,9 @@ function vDash() {
     <div class="kpi"><span>Unités en stock</span><b data-count="${units}">${units}</b></div>
     <div class="kpi"><span>Références</span><b data-count="${P.length}">${P.length}</b></div>
     <div class="kpi"><span>Ventes du mois (après décaissements)</span><b data-count="${ca - dm}" data-fmt="fcfa">${fcfa(ca - dm)}</b></div>
-    <div class="kpi"><span>Décaissé ce mois</span><b data-count="${dm}" data-fmt="fcfa">${fcfa(dm)}</b></div>
+    <div class="kpi"><span>Décaissé ce mois (sur les ventes)</span><b data-count="${dm}" data-fmt="fcfa">${fcfa(dm)}</b></div>
+    <div class="kpi"><span>Capital disponible</span><b data-count="${capD}" data-fmt="fcfa">${fcfa(capD)}</b></div>
+    <div class="kpi"><span>Commandes en attente</span><b data-count="${pendAmt}" data-fmt="fcfa">${fcfa(pendAmt)}</b></div>
     <div class="kpi"><span>Quantité vendue (mois)</span><b data-count="${qv}">${qv}</b></div>
     <div class="kpi"><span>Sorties en cours</span><b data-count="${circ}">${circ}</b></div></div>
   <div class="grid2">
@@ -332,7 +340,7 @@ function inPeriod(d) {
 }
 function vSales() {
   const list = db.sales.filter(s => inPeriod(s.date)).sort((a, b) => b.date.localeCompare(a.date) || b.n - a.n);
-  const ca = list.reduce((s, x) => s + x.total, 0), qv = list.reduce((s, x) => s + saleQty(x), 0), rem = list.reduce((s, x) => s + saleRem(x), 0), dc = db.cash.filter(c => inPeriod(c.date)).reduce((s, c) => s + c.amount, 0);
+  const ca = list.reduce((s, x) => s + x.total, 0), qv = list.reduce((s, x) => s + saleQty(x), 0), rem = list.reduce((s, x) => s + saleRem(x), 0), dc = db.cash.filter(c => c.src !== 'capital' && inPeriod(c.date)).reduce((s, c) => s + c.amount, 0);
   const P = [['day', 'Aujourd’hui'], ['week', '7 derniers jours'], ['month', 'Ce mois'], ['all', 'Tout']];
   return `<div class="bar"><select id="sper" aria-label="Période">${P.map(([v, l]) => `<option value="${v}" ${v === sper ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="kpis"><div class="kpi hero"><span>Montant total des ventes</span><b>${fcfa(ca)}</b></div><div class="kpi"><span>Quantité vendue</span><b>${qv}</b></div>
@@ -506,6 +514,7 @@ function removeMove(m) {
   const p = prod(m.pid);
   if (p) p.stock += m.type === 'out' ? m.qty : -m.qty;
   if (m.type === 'ret') { const o = db.moves.find(x => x.id === m.from); if (o) o.ret = Math.max(0, (o.ret || 0) - m.qty); }
+  if (m.order) { const o = db.orders.find(x => x.id === m.order), l = o && o.lines.find(x => x.id === m.ol); if (l) l.recv = Math.max(0, (l.recv || 0) - m.qty); }
   db.moves = db.moves.filter(x => x !== m);
 }
 async function verifyPass(pw) {
@@ -539,42 +548,147 @@ function delMove(id) {
   };
 }
 
-/* ---------- Décaissements (ravitaillement auprès des fournisseurs) ---------- */
+/* ---------- Commandes fournisseurs ---------- */
+const orderNo = n => 'C-' + String(n).padStart(4, '0');
+const lineRest = l => l.qty - (l.recv || 0);
+const orderRest = o => o.cancelled ? 0 : o.lines.reduce((t, l) => t + lineRest(l), 0);
+const orderRestAmt = o => o.cancelled ? 0 : o.lines.reduce((t, l) => t + lineRest(l) * l.price, 0);
+const orderAmt = o => o.lines.reduce((t, l) => t + l.qty * l.price, 0);
+const orderState = o => o.cancelled ? 'cancelled' : orderRest(o) > 0 ? 'pending' : 'received';
+const capIn = () => db.cap.reduce((t, c) => t + c.amount, 0);
+const capOut = () => db.cash.filter(c => c.src === 'capital').reduce((t, c) => t + c.amount, 0);
+
+function vOrders() {
+  const S = [['pending', 'En attente'], ['received', 'Reçues'], ['cancelled', 'Annulées'], ['all', 'Toutes']];
+  const all = [...db.orders].sort((a, b) => b.date.localeCompare(a.date) || b.n - a.n), pend = all.filter(o => orderState(o) === 'pending');
+  const list = ofilt === 'all' ? all : all.filter(o => orderState(o) === ofilt);
+  const head = `<div class="bar"><select id="ofilt" aria-label="Affichage">${S.map(([v, l]) => `<option value="${v}" ${v === ofilt ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="kpis"><div class="kpi hero"><span>En attente chez les fournisseurs</span><b>${fcfa(pend.reduce((t, o) => t + orderRestAmt(o), 0))}</b></div>
+  <div class="kpi"><span>Commandes en attente</span><b>${pend.length}</b></div><div class="kpi"><span>Produits attendus</span><b>${pend.reduce((t, o) => t + orderRest(o), 0)}</b></div></div>`;
+  if (!list.length) return head + '<div class="card empty"><h2>Aucune commande</h2><p>Notez ici ce que vous commandez aux fournisseurs : produits, quantités et prix. À l’arrivée, « Réceptionner » ajoute les produits au stock.</p></div>';
+  const B = { pending: ['low', 'En attente'], received: ['ok', 'Reçue'], cancelled: ['out', 'Annulée'] };
+  return head + `<div class="stack">${list.map(o => { const st = orderState(o);
+    return `<div class="card"><div class="og-h"><div><h2>${orderNo(o.n)} · ${esc(o.supplier || 'Fournisseur non précisé')}</h2><small>Commandée le ${dateFr(o.date)} · ${fcfa(orderAmt(o))}</small></div>
+    <div class="acts"><span class="badge ${B[st][0]}">${B[st][1]}</span>${st === 'pending' ? `<button class="btn pri sm" data-a="recv" data-id="${o.id}">Réceptionner</button><button class="btn sm bad" data-a="cancelord" data-id="${o.id}">Annuler</button>` : ''}</div></div>
+    <table><thead><tr><th>Produit</th><th class="num">Commandé</th><th class="num">Prix unitaire</th><th class="num">Reçu</th><th class="num">Reste</th><th class="num">Total</th></tr></thead><tbody>
+    ${o.lines.map(l => `<tr><td>${esc(l.name)}</td><td class="num">${l.qty}</td><td class="num">${fcfa(l.price)}</td><td class="num">${l.recv || 0}</td><td class="num">${o.cancelled ? 0 : lineRest(l)}</td><td class="num">${fcfa(l.qty * l.price)}</td></tr>`).join('')}</tbody></table></div>`; }).join('')}</div>`;
+}
+function orderForm() {
+  if (!db.products.length) return toast('Ajoutez d’abord un produit');
+  dlg.classList.add('wide'); dlg.addEventListener('close', () => dlg.classList.remove('wide'), { once: true });
+  const opts = db.products.map(p => `<option value="${p.id}">${esc(p.name)}${p.size ? ' ' + p.size + ' ml' : ''}</option>`).join('');
+  const sups = [...new Set(db.products.map(p => p.supplier).filter(Boolean))];
+  open(`<form method="dialog" id="of"><h2>Nouvelle commande fournisseur</h2>
+  <div class="row">${field('Fournisseur', 'supplier', '', 'list="sups" maxlength="80"')}${field('Date de la commande', 'date', today(), 'type="date" required')}</div>
+  <datalist id="sups">${sups.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+  <div class="ol olh"><span>Produit</span><span>Qté commandée</span><span>Prix d’achat unitaire</span><span class="r">Total</span><span></span></div>
+  <div id="olines"></div><div><button type="button" class="btn sm" id="oadd">+ Ajouter un produit</button></div>
+  <div class="tot"><div><span>Total de la commande</span><b id="otot">0 FCFA</b></div></div>
+  <label class="f">Décaissement correspondant<select name="pay"><option value="">Ne pas enregistrer de décaissement maintenant</option><option value="ventes">Décaisser sur les ventes du mois</option><option value="capital">Décaisser sur le capital de départ</option></select></label>
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer la commande</button></div></form>`);
+  const f = $('#of'), box = $('#olines'), q = (r, n) => r.querySelector(`[name=${n}]`);
+  const calc = () => { let tot = 0; box.querySelectorAll('.ol').forEach(r => { const n = parseInt(q(r, 'q').value, 10) || 0, u = +q(r, 'u').value || 0; r.querySelector('.lt').textContent = fcfa(n * u); tot += n * u; }); $('#otot').textContent = fcfa(tot); };
+  const sync = (r, reset) => { const p = prod(q(r, 'p').value); if (reset || r.dataset.p !== p.id) { q(r, 'u').value = p.cost; r.dataset.p = p.id; if (!f.elements.supplier.value && p.supplier) f.elements.supplier.value = p.supplier; } calc(); };
+  const add = id => { box.insertAdjacentHTML('beforeend', `<div class="ol"><select name="p" aria-label="Produit">${opts}</select><input name="q" type="number" min="1" step="1" value="1" required aria-label="Quantité commandée"><input name="u" type="number" min="0" step="any" required aria-label="Prix d’achat unitaire"><b class="lt r"></b><button type="button" class="btn sm bad" data-rm aria-label="Retirer">✕</button></div>`); const r = box.lastElementChild; q(r, 'p').value = id; sync(r, true); };
+  add(db.products[0].id);
+  $('#oadd').onclick = () => add(db.products[0].id);
+  box.onclick = e => { const b = e.target.closest('[data-rm]'); if (b && box.children.length > 1) { b.closest('.ol').remove(); calc(); } };
+  box.oninput = calc; box.onchange = e => { if (e.target.name === 'p') sync(e.target.closest('.ol')); };
+  f.onsubmit = e => {
+    e.preventDefault();
+    const L = [...box.querySelectorAll('.ol')].map(r => { const p = prod(q(r, 'p').value); return { id: uid(), pid: p.id, name: p.name, qty: parseInt(q(r, 'q').value, 10), price: +q(r, 'u').value, recv: 0 }; });
+    const total = L.reduce((t, l) => t + l.qty * l.price, 0), date = f.elements.date.value, supplier = f.elements.supplier.value.trim(), pay = f.elements.pay.value;
+    const o = { id: uid(), n: db.orders.reduce((m, x) => Math.max(m, x.n), 0) + 1, ts: Date.now(), date, supplier, lines: L };
+    db.orders.push(o);
+    if (pay && total > 0) db.cash.push({ id: uid(), ts: Date.now(), date, amount: total, reason: `Commande ${orderNo(o.n)}${supplier ? ' · ' + supplier : ''}`, ...(pay === 'capital' ? { src: 'capital' } : {}), order: o.id });
+    save(); dlg.close(); view = 'orders'; ofilt = 'pending'; render(); toast('Commande enregistrée : en attente chez le fournisseur');
+  };
+}
+function receiveForm(oid) {
+  const o = db.orders.find(x => x.id === oid); if (!o || orderState(o) !== 'pending') return;
+  const L = o.lines.filter(l => lineRest(l) > 0 && prod(l.pid)); if (!L.length) return toast('Les produits de cette commande n’existent plus');
+  dlg.classList.add('wide'); dlg.addEventListener('close', () => dlg.classList.remove('wide'), { once: true });
+  open(`<form method="dialog" id="rf"><h2>Réceptionner ${orderNo(o.n)}</h2>
+  <p class="hint">Indiquez la quantité réellement reçue. Elle est ajoutée au stock (entrée) et le prix d’achat du produit est mis à jour. Ce qui n’est pas reçu reste en attente.</p>
+  ${field('Date de réception', 'date', today(), 'type="date" required')}
+  <div class="ol olh"><span>Produit</span><span>Reste</span><span>Prix d’achat</span><span>Reçu maintenant</span><span></span></div>
+  ${L.map(l => `<div class="ol" data-l="${l.id}"><b>${esc(l.name)}</b><span>${lineRest(l)}</span><span>${fcfa(l.price)}</span><input name="q" type="number" min="0" max="${lineRest(l)}" step="1" value="${lineRest(l)}" aria-label="Quantité reçue"><span></span></div>`).join('')}
+  <p class="hint" id="rh"></p><div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Ajouter au stock</button></div></form>`);
+  const f = $('#rf');
+  f.onsubmit = e => {
+    e.preventDefault();
+    const R = [...f.querySelectorAll('.ol[data-l]')].map(r => ({ l: o.lines.find(x => x.id === r.dataset.l), n: parseInt(r.querySelector('[name=q]').value, 10) || 0 })).filter(x => x.n > 0);
+    const h = $('#rh'); h.style.color = 'var(--bad)';
+    if (!R.length) { h.textContent = 'Indiquez au moins une quantité reçue.'; return; }
+    if (R.some(x => x.n > lineRest(x.l))) { h.textContent = 'Une quantité dépasse ce qui reste à recevoir.'; return; }
+    const date = f.elements.date.value;
+    R.forEach(({ l, n }) => { const p = prod(l.pid); l.recv = (l.recv || 0) + n; p.stock += n; p.cost = l.price;
+      db.moves.push({ id: uid(), ts: Date.now(), pid: p.id, type: 'in', qty: n, unit: l.price, date, note: `Réception ${orderNo(o.n)}${o.supplier ? ' · ' + o.supplier : ''}`, order: o.id, ol: l.id }); });
+    save(); dlg.close(); render(); toast('Réception enregistrée, stock mis à jour');
+  };
+}
+function cancelOrder(oid) {
+  const o = db.orders.find(x => x.id === oid); if (!o) return;
+  if (!confirm(`Annuler la commande ${orderNo(o.n)} ? Les ${orderRest(o)} produit(s) non reçus ne seront plus attendus. Un décaissement déjà enregistré pour cette commande n’est pas supprimé automatiquement.`)) return;
+  o.cancelled = true; save(); render(); toast('Commande annulée');
+}
+
+/* ---------- Décaissements et capital ---------- */
 function vCash() {
   const PER = [['day', 'Aujourd’hui'], ['week', '7 derniers jours'], ['month', 'Ce mois'], ['all', 'Tout']];
   const list = db.cash.filter(c => inPeriod(c.date)).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
-  const tot = list.reduce((s, c) => s + c.amount, 0), ventes = db.sales.filter(s => inPeriod(s.date)).reduce((s, x) => s + x.total, 0);
+  const sum = a => a.reduce((s, c) => s + c.amount, 0), tV = sum(list.filter(c => c.src !== 'capital')), tC = sum(list.filter(c => c.src === 'capital'));
+  const ventes = db.sales.filter(s => inPeriod(s.date)).reduce((s, x) => s + x.total, 0), caps = [...db.cap].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
   return `<div class="bar"><select id="sper" aria-label="Période">${PER.map(([v, l]) => `<option value="${v}" ${v === sper ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-  <div class="kpis"><div class="kpi hero"><span>Total décaissé</span><b>${fcfa(tot)}</b></div><div class="kpi"><span>Ventes de la période</span><b>${fcfa(ventes)}</b></div>
-  <div class="kpi"><span>Solde après décaissements</span><b>${fcfa(ventes - tot)}</b></div></div>
-  <div class="card">${list.length ? `<table><thead><tr><th>Date</th><th>Raison du décaissement</th><th class="num">Montant</th><th></th></tr></thead><tbody>
-  ${list.map(c => `<tr><td>${dateFr(c.date)}</td><td>${esc(c.reason)}</td><td class="num"><b>${fcfa(c.amount)}</b></td>
-  <td><div class="acts"><button class="btn sm bad" data-a="delcash" data-id="${c.id}" aria-label="Supprimer ce décaissement">Supprimer</button></div></td></tr>`).join('')}</tbody></table>`
-    : '<p class="empty">Aucun décaissement sur cette période. Cliquez sur « Nouveau décaissement » pour en enregistrer un.</p>'}</div>`;
+  <div class="kpis"><div class="kpi hero"><span>Total décaissé</span><b>${fcfa(tV + tC)}</b></div><div class="kpi"><span>Prélevé sur les ventes</span><b>${fcfa(tV)}</b></div>
+  <div class="kpi"><span>Solde des ventes</span><b>${fcfa(ventes - tV)}</b></div><div class="kpi"><span>Capital de départ (total)</span><b>${fcfa(capIn())}</b></div>
+  <div class="kpi"><span>Capital disponible</span><b>${fcfa(capIn() - capOut())}</b></div></div>
+  <div class="stack"><div class="card"><h2>Décaissements</h2>${list.length ? `<table><thead><tr><th>Date</th><th>Raison du décaissement</th><th>Payé avec</th><th class="num">Montant</th><th></th></tr></thead><tbody>
+  ${list.map(c => `<tr><td>${dateFr(c.date)}</td><td>${esc(c.reason)}</td><td><span class="badge ${c.src === 'capital' ? 'low' : 'ok'}">${c.src === 'capital' ? 'Capital' : 'Ventes'}</span></td><td class="num"><b>${fcfa(c.amount)}</b></td>
+  <td><div class="acts"><button class="btn sm bad" data-a="delcash" data-id="${c.id}" aria-label="Supprimer ce décaissement">Supprimer</button></div></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Aucun décaissement sur cette période.</p>'}</div>
+  <div class="card"><h2>Apports de capital</h2><p class="hint">Argent ajouté pour acheter du stock, hors décaissement : il ne modifie pas les ventes. Le capital n’est pas filtré par période.</p>${caps.length ? `<table><thead><tr><th>Date</th><th>Origine / note</th><th class="num">Montant</th><th></th></tr></thead><tbody>
+  ${caps.map(c => `<tr><td>${dateFr(c.date)}</td><td>${esc(c.note || '—')}</td><td class="num"><b>${fcfa(c.amount)}</b></td><td><div class="acts"><button class="btn sm bad" data-a="delcap" data-id="${c.id}" aria-label="Supprimer cet apport">Supprimer</button></div></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Aucun apport enregistré.</p>'}</div></div>`;
 }
 function cashForm() {
   open(`<form method="dialog" id="cf"><h2>Nouveau décaissement</h2>
-  <p class="hint">Somme prélevée sur les ventes pour le ravitaillement en parfums auprès des fournisseurs. Elle est déduite automatiquement des ventes du mois.</p>
+  <p class="hint">Somme sortie pour le ravitaillement en parfums auprès des fournisseurs, avec sa date et sa raison.</p>
   <div class="row">${field('Date du décaissement', 'date', today(), 'type="date" required')}${field('Montant (FCFA)', 'amount', '', 'type="number" min="1" step="any" required')}</div>
+  <label class="f">Payé avec<select name="src"><option value="ventes">Les ventes du mois (déduit des ventes)</option><option value="capital">Le capital de départ (ventes inchangées)</option></select></label>
   <label class="f">Raison du décaissement<textarea name="reason" rows="3" required maxlength="200" placeholder="Ex. : achat de 20 flacons chez le fournisseur"></textarea></label>
   <div class="bal" id="bal"></div>
   <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer le décaissement</button></div></form>`);
   const f = $('#cf'), bal = $('#bal');
   const upd = () => {
-    const d = f.elements.date.value, amt = +f.elements.amount.value || 0; if (!d) { bal.textContent = ''; return; }
-    const mo = d.slice(0, 7), net = db.sales.filter(s => s.date.startsWith(mo)).reduce((t, s) => t + s.total, 0) - db.cash.filter(c => c.date.startsWith(mo)).reduce((t, c) => t + c.amount, 0);
-    const lab = new Date(mo + '-01T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const d = f.elements.date.value, amt = +f.elements.amount.value || 0, cap = f.elements.src.value === 'capital'; if (!d) { bal.textContent = ''; return; }
+    const mo = d.slice(0, 7), lab = new Date(mo + '-01T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const net = cap ? capIn() - capOut() : db.sales.filter(s => s.date.startsWith(mo)).reduce((t, s) => t + s.total, 0) - db.cash.filter(c => c.src !== 'capital' && c.date.startsWith(mo)).reduce((t, c) => t + c.amount, 0);
     bal.classList.toggle('neg', net - amt < 0);
-    bal.textContent = `Ventes de ${lab} après décaissements : ${fcfa(net)}` + (amt ? ` → ${fcfa(net - amt)} avec ce décaissement` : '') + (net - amt < 0 ? ' (supérieur aux ventes du mois)' : '');
+    bal.textContent = `${cap ? 'Capital disponible' : 'Ventes de ' + lab + ' après décaissements'} : ${fcfa(net)}` + (amt ? ` → ${fcfa(net - amt)} avec ce décaissement` : '') + (net - amt < 0 ? ' (montant insuffisant)' : '');
   };
-  f.oninput = upd; upd();
+  f.oninput = upd; f.onchange = upd; upd();
   f.onsubmit = e => {
     const amount = +f.elements.amount.value, reason = f.elements.reason.value.trim();
     if (!(amount > 0) || !reason) { e.preventDefault(); return; }
-    db.cash.push({ id: uid(), ts: Date.now(), date: f.elements.date.value, amount, reason });
-    save(); render(); toast('Décaissement enregistré, ventes du mois mises à jour');
+    db.cash.push({ id: uid(), ts: Date.now(), date: f.elements.date.value, amount, reason, ...(f.elements.src.value === 'capital' ? { src: 'capital' } : {}) });
+    save(); render(); toast('Décaissement enregistré');
   };
 }
+function capForm() {
+  open(`<form method="dialog" id="kf"><h2>Ajouter du capital</h2>
+  <p class="hint">Argent apporté au démarrage, ou plus tard, pour acheter du stock. Ce n’est ni une vente ni un décaissement : les ventes du mois ne changent pas.</p>
+  <div class="row">${field('Date', 'date', today(), 'type="date" required')}${field('Montant (FCFA)', 'amount', '', 'type="number" min="1" step="any" required')}</div>
+  ${field('Origine / note (facultatif)', 'note', '', 'maxlength="120"')}
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer le capital</button></div></form>`);
+  $('#kf').onsubmit = e => {
+    const f = e.target, amount = +f.elements.amount.value; if (!(amount > 0)) { e.preventDefault(); return; }
+    db.cap.push({ id: uid(), ts: Date.now(), date: f.elements.date.value, amount, note: f.elements.note.value.trim() }); save(); render(); toast('Capital ajouté');
+  };
+}
+function delCap(id) {
+  const c = db.cap.find(x => x.id === id); if (!c) return;
+  askPass('Supprimer cet apport de capital', `${fcfa(c.amount)} du ${dateFr(c.date)}${c.note ? ' : ' + esc(c.note) : ''}.<br>Le capital disponible diminuera de ce montant.`, () => { db.cap = db.cap.filter(x => x.id !== id); save(); render(); toast('Apport supprimé'); });
+}
+
 function askPass(title, html, onOk) {
   if (cloud === 'local') return alert('Cette action demande le mot de passe du serveur : indisponible en mode local.');
   open(`<form method="dialog" id="pf2"><h2>${esc(title)}</h2><p class="hint">${html}</p>${field('Mot de passe', 'pw', '', 'type="password" required autocomplete="current-password"')}<p class="hint" id="ph"></p>
@@ -601,8 +715,12 @@ function docData(kind) {
   if (kind === 'outs') { const R = db.moves.filter(m => outRest(m) > 0).sort((a, b) => b.date.localeCompare(a.date));
     return { file: 'sorties-en-cours', title: 'Sorties en cours', head: ['Date', 'Produit', 'Sortis', 'Vendus', 'Retournés', 'Reste'],
       rows: R.map(m => [dateFr(m.date), prod(m.pid)?.name || '-', m.qty, m.sold || 0, m.ret || 0, outRest(m)]), foot: `${R.reduce((t, m) => t + outRest(m), 0)} unité(s) en sortie` }; }
+  if (kind === 'orders') { const O = db.orders.filter(o => orderState(o) === 'pending').sort((a, b) => b.date.localeCompare(a.date));
+    return { file: 'commandes-en-attente', title: 'Commandes en attente chez les fournisseurs', head: ['N°', 'Date', 'Fournisseur', 'Produits à recevoir', 'Reste', 'Montant restant'],
+      rows: O.map(o => [orderNo(o.n), dateFr(o.date), o.supplier || '-', o.lines.filter(l => lineRest(l) > 0).map(l => `${lineRest(l)} x ${l.name} (${plain(l.price)})`).join(' ; '), orderRest(o), plain(orderRestAmt(o))]),
+      foot: `${O.length} commande(s) en attente  |  Total : ${plain(O.reduce((t, o) => t + orderRestAmt(o), 0))}` }; }
   if (kind === 'cash') { const C = [...db.cash].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts), t = C.reduce((s, c) => s + c.amount, 0);
-    return { file: 'decaissements', title: 'Décaissements', head: ['Date', 'Raison', 'Montant'], rows: C.map(c => [dateFr(c.date), c.reason, plain(c.amount)]), foot: `${C.length} décaissement(s)  |  Total : ${plain(t)}` }; }
+    return { file: 'decaissements', title: 'Décaissements', head: ['Date', 'Raison', 'Payé avec', 'Montant'], rows: C.map(c => [dateFr(c.date), c.reason, c.src === 'capital' ? 'Capital' : 'Ventes', plain(c.amount)]), foot: `${C.length} décaissement(s)  |  Total : ${plain(t)}` }; }
   if (kind === 'sales') { const S = [...db.sales].sort((a, b) => b.date.localeCompare(a.date) || b.n - a.n), t = S.reduce((x, y) => x + y.total, 0);
     return { file: 'ventes', title: 'Ventes', head: ['N°', 'Date', 'Client', 'Articles vendus', 'Qté', 'Total', 'Remise'],
       rows: S.map(x => [saleNo(x.n), dateFr(x.date), x.client || '-', x.lines.map(l => `${l.qty} x ${l.name} (${plain(l.unit)})`).join(' ; '), saleQty(x), plain(x.total), plain(saleRem(x))]), foot: `${S.length} vente(s)  |  Total : ${plain(t)}` }; }
@@ -635,7 +753,7 @@ td.t{background:#f4ecdc;font-weight:bold;text-align:right;color:#2a1b3d}</style>
 }
 function exportForm() {
   open(`<form method="dialog" id="xf"><h2>Exporter un document</h2>
-  <label class="f">Document<select name="kind"><option value="inv">Inventaire du stock</option><option value="low">Produits à réapprovisionner</option><option value="sales">Ventes</option><option value="cash">Décaissements</option><option value="outs">Sorties en cours</option><option value="moves">Historique des mouvements</option></select></label>
+  <label class="f">Document<select name="kind"><option value="inv">Inventaire du stock</option><option value="low">Produits à réapprovisionner</option><option value="sales">Ventes</option><option value="cash">Décaissements</option><option value="orders">Commandes en attente chez les fournisseurs</option><option value="outs">Sorties en cours</option><option value="moves">Historique des mouvements</option></select></label>
   <div class="fmt"><label><input type="radio" name="fmt" value="pdf" checked><span><b>PDF</b><small>Prêt à imprimer ou à envoyer</small></span></label>
   <label><input type="radio" name="fmt" value="word"><span><b>Word</b><small>Modifiable (.doc)</small></span></label></div>
   <p class="hint">PDF : dans la fenêtre d’impression qui s’ouvre, choisissez « Enregistrer au format PDF » comme imprimante.</p><div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Télécharger</button></div></form>`);
@@ -733,11 +851,11 @@ document.addEventListener('click', e => {
   const nav = e.target.closest('#nav button'); if (nav) { view = nav.dataset.view; return render(); }
   const b = e.target.closest('[data-a]'); if (!b) return;
   const p = prod(b.dataset.id);
-  ({ new: () => productForm(), cash: () => cashForm(), delcash: () => delCash(b.dataset.id), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), delmove: () => delMove(b.dataset.id), demo,
+  ({ new: () => productForm(), cash: () => cashForm(), cap: () => capForm(), delcap: () => delCap(b.dataset.id), order: () => orderForm(), recv: () => receiveForm(b.dataset.id), cancelord: () => cancelOrder(b.dataset.id), delcash: () => delCash(b.dataset.id), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), delmove: () => delMove(b.dataset.id), demo,
     del: () => { if (confirm(`Supprimer « ${p.name} » et son historique ?`)) { db.products = db.products.filter(x => x !== p); db.moves = db.moves.filter(m => m.pid !== p.id); save(); render(); toast('Produit supprimé'); } } })[b.dataset.a]();
 });
 document.addEventListener('input', e => { if (e.target.id === 'q') { q = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#q'); i.focus(); i.setSelectionRange(pos, pos); } });
-document.addEventListener('change', e => { if (e.target.id === 'fcat') { fcat = e.target.value; render(); } if (e.target.id === 'ftype') { ftype = e.target.value; render(); } if (e.target.id === 'sper') { sper = e.target.value; render(); } });
+document.addEventListener('change', e => { if (e.target.id === 'fcat') { fcat = e.target.value; render(); } if (e.target.id === 'ftype') { ftype = e.target.value; render(); } if (e.target.id === 'sper') { sper = e.target.value; render(); } if (e.target.id === 'ofilt') { ofilt = e.target.value; render(); } });
 $('#export').onclick = () => {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' }));
   a.download = `planete2-stock-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
