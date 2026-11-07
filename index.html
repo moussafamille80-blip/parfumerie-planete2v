@@ -170,9 +170,9 @@ function render() {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
   const a = $('#actions');
   a.innerHTML = view === 'moves'
-    ? '<button class="btn" data-a="in">+ Entrée</button> <button class="btn pri" data-a="out">− Sortie</button>'
+    ? '<button class="btn" data-a="order">+ Nouvelle commande</button> <button class="btn pri" data-a="out">− Sortie</button>'
     : view === 'sales' ? '<button class="btn pri" data-a="sale">+ Nouvelle vente</button>'
-    : view === 'cash' ? '<button class="btn" data-a="cap">+ Ajouter du capital</button> <button class="btn pri" data-a="cash">+ Nouveau décaissement</button>'
+    : view === 'cash' ? '<button class="btn" data-a="cap">+ Ajouter un apport</button> <button class="btn pri" data-a="cash">+ Nouveau décaissement</button>'
     : view === 'orders' ? '<button class="btn pri" data-a="order">+ Nouvelle commande</button>'
     : '<button class="btn" data-a="new">+ Nouveau produit</button> <button class="btn pri" data-a="sale">+ Nouvelle vente</button>';
   $('#view').innerHTML = { dashboard: vDash, products: vProducts, sales: vSales, cash: vCash, orders: vOrders, moves: vMoves }[view]();
@@ -186,7 +186,7 @@ function vDash() {
   const P = db.products;
   if (!P.length) return empty();
   const units = P.reduce((s, p) => s + p.stock, 0);
-  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0), circ = db.moves.reduce((t, m) => t + outRest(m), 0), dm = db.cash.filter(x => x.src !== 'capital' && x.date.startsWith(today().slice(0, 7))).reduce((t, x) => t + x.amount, 0), capD = capIn() - capOut(), pendAmt = db.orders.reduce((t, o) => t + orderRestAmt(o), 0);
+  const ms = db.sales.filter(x => x.date.startsWith(today().slice(0, 7))), ca = ms.reduce((t, x) => t + x.total, 0), qv = ms.reduce((t, x) => t + saleQty(x), 0), circ = db.moves.reduce((t, m) => t + outRest(m), 0), dm = db.cash.filter(x => x.src !== 'capital' && x.date.startsWith(today().slice(0, 7))).reduce((t, x) => t + x.amount, 0), capD = capIn() - capOut(), pendAmt = db.orders.reduce((t, o) => t + orderRestAmt(o), 0), pendUnits = db.orders.reduce((t, o) => t + orderRest(o), 0);
   const cost = P.reduce((s, p) => s + p.stock * p.cost, 0);
   const sale = P.reduce((s, p) => s + p.stock * p.price, 0);
   const alerts = P.filter(p => p.stock <= p.min).sort((a, b) => a.stock - b.stock);
@@ -210,12 +210,13 @@ function vDash() {
   <div class="kpis">
     <div class="kpi"><span>Valeur du stock (achat)</span><b data-count="${cost}" data-fmt="fcfa">${fcfa(cost)}</b></div>
     <div class="kpi"><span>Marge potentielle</span><b data-count="${sale - cost}" data-fmt="fcfa">${fcfa(sale - cost)}</b></div>
-    <div class="kpi"><span>Unités en stock</span><b data-count="${units}">${units}</b></div>
+    <div class="kpi"><span>Unités en stock disponible</span><b data-count="${units}">${units}</b></div>
     <div class="kpi"><span>Références</span><b data-count="${P.length}">${P.length}</b></div>
     <div class="kpi"><span>Ventes du mois (après décaissements)</span><b data-count="${ca - dm}" data-fmt="fcfa">${fcfa(ca - dm)}</b></div>
     <div class="kpi"><span>Décaissé ce mois (sur les ventes)</span><b data-count="${dm}" data-fmt="fcfa">${fcfa(dm)}</b></div>
-    <div class="kpi"><span>Capital disponible</span><b data-count="${capD}" data-fmt="fcfa">${fcfa(capD)}</b></div>
-    <div class="kpi"><span>Commandes en attente</span><b data-count="${pendAmt}" data-fmt="fcfa">${fcfa(pendAmt)}</b></div>
+    <div class="kpi"><span>Apport disponible</span><b data-count="${capD}" data-fmt="fcfa">${fcfa(capD)}</b></div>
+    <div class="kpi"><span>Commandes en attente (non reçues)</span><b data-count="${pendAmt}" data-fmt="fcfa">${fcfa(pendAmt)}</b></div>
+    <div class="kpi"><span>Unités en commande (hors stock)</span><b data-count="${pendUnits}">${pendUnits}</b></div>
     <div class="kpi"><span>Quantité vendue (mois)</span><b data-count="${qv}">${qv}</b></div>
     <div class="kpi"><span>Sorties en cours</span><b data-count="${circ}">${circ}</b></div></div>
   <div class="grid2">
@@ -224,7 +225,7 @@ function vDash() {
     <div class="card"><h2>Valeur par catégorie</h2><div class="donut-w"><svg class="donut" viewBox="0 0 42 42"><circle r="15.9155" cx="21" cy="21" fill="none" stroke="#eee9f4" stroke-width="5"/><g transform="rotate(-90 21 21)">${segs}</g></svg>
       <ul class="legend-l">${cats.map(([c, v], i) => `<li><i style="background:${PAL[i % 6]}"></i>${esc(c)}<b>${Math.round(v / tot * 100)} %</b></li>`).join('')}</ul></div></div></div>
   <div class="grid2">
-    <div class="card"><h2>À réapprovisionner</h2>${alerts.length ? `<table><tbody>${alerts.map(p => `<tr><td>${esc(p.name)}<small>${esc(p.supplier || 'Fournisseur non renseigné')}</small></td><td class="num"><span class="badge ${status(p)[0]}">${p.stock} / seuil ${p.min}</span></td><td class="acts"><button class="btn sm" data-a="in" data-id="${p.id}">Entrée</button></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Tous les produits sont au-dessus de leur seuil.</p>'}</div>
+    <div class="card"><h2>À réapprovisionner</h2>${alerts.length ? `<table><tbody>${alerts.map(p => `<tr><td>${esc(p.name)}<small>${esc(p.supplier || 'Fournisseur non renseigné')}${pendingQty(p.id) ? ' · ' + pendingQty(p.id) + ' déjà en commande (non reçu)' : ''}</small></td><td class="num"><span class="badge ${status(p)[0]}">${p.stock} / seuil ${p.min}</span></td><td class="acts"><button class="btn sm" data-a="order" data-id="${p.id}">Commander</button></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Tous les produits sont au-dessus de leur seuil.</p>'}</div>
     <div class="card"><h2>Derniers mouvements</h2>${last.length ? movesTable(last) : '<p class="hint">Aucun mouvement enregistré.</p>'}</div></div>`;
 }
 function fx() {
@@ -246,11 +247,11 @@ function vProducts() {
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   return `<div class="bar"><input id="q" type="search" placeholder="Rechercher un parfum, une marque, un fournisseur…" value="${esc(q)}" aria-label="Rechercher">
     <select id="fcat" aria-label="Catégorie"><option value="">Toutes les catégories</option>${CATS.map(c => `<option ${c === fcat ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
-  <div class="card">${list.length ? `<table><thead><tr><th>Produit</th><th>Fournisseur</th><th class="num">Prix achat</th><th class="num">Prix vente</th><th class="num">Marge</th><th class="num">Stock</th><th></th></tr></thead><tbody>
+  <div class="card">${list.length ? `<table><thead><tr><th>Produit</th><th>Fournisseur</th><th class="num">Prix achat</th><th class="num">Prix vente</th><th class="num">Marge</th><th class="num">Stock disponible</th><th></th></tr></thead><tbody>
   ${list.map(p => { const [c, l] = status(p); return `<tr><td><b>${esc(p.name)}</b><small>${esc([p.brand, p.cat, p.size && p.size + ' ml'].filter(Boolean).join(' · '))}</small></td>
     <td>${esc(p.supplier || '—')}</td><td class="num">${fcfa(p.cost)}</td><td class="num">${fcfa(p.price)}</td><td class="num">${margin(p).toFixed(0)} %</td>
-    <td class="num"><span class="badge ${c}" title="${l}">${p.stock}</span><div class="lvl ${c}"><i style="width:${Math.min(100, p.stock / Math.max(p.min * 3, 1) * 100)}%"></i></div></td>
-    <td><div class="acts"><button class="btn sm" data-a="in" data-id="${p.id}">Entrée</button><button class="btn sm" data-a="sale" data-id="${p.id}">Vendre</button><button class="btn sm" data-a="out" data-id="${p.id}">Sortie</button><button class="btn sm" data-a="edit" data-id="${p.id}">Modifier</button><button class="btn sm bad" data-a="del" data-id="${p.id}" aria-label="Supprimer ${esc(p.name)}">Supprimer</button></div></td></tr>`; }).join('')}
+    <td class="num"><span class="badge ${c}" title="${l}">${p.stock}</span><div class="lvl ${c}"><i style="width:${Math.min(100, p.stock / Math.max(p.min * 3, 1) * 100)}%"></i></div>${pendingQty(p.id) ? `<small>+${pendingQty(p.id)} en commande</small>` : ''}</td>
+    <td><div class="acts"><button class="btn sm" data-a="order" data-id="${p.id}">Commander</button><button class="btn sm" data-a="sale" data-id="${p.id}">Vendre</button><button class="btn sm" data-a="out" data-id="${p.id}">Sortie</button><button class="btn sm" data-a="edit" data-id="${p.id}">Modifier</button><button class="btn sm bad" data-a="del" data-id="${p.id}" aria-label="Supprimer ${esc(p.name)}">Supprimer</button></div></td></tr>`; }).join('')}
   </tbody></table>` : '<p class="empty">Aucun produit ne correspond à votre recherche.</p>'}</div>`;
 }
 
@@ -268,7 +269,7 @@ function movesTable(list, acts) {
 function vMoves() {
   const list = db.moves.filter(m => !ftype || (ftype === 'open' ? outRest(m) > 0 : m.type === ftype)).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
   return `<div class="bar"><select id="ftype" aria-label="Type"><option value="">Entrées et sorties</option><option value="in" ${ftype === 'in' ? 'selected' : ''}>Entrées</option><option value="out" ${ftype === 'out' ? 'selected' : ''}>Sorties</option><option value="ret" ${ftype === 'ret' ? 'selected' : ''}>Retours</option><option value="open" ${ftype === 'open' ? 'selected' : ''}>Sorties en cours</option></select></div>
-  <div class="card">${list.length ? movesTable(list, true) : '<p class="empty">Aucun mouvement. Enregistrez une entrée à la réception d’une commande, ou une sortie à chaque vente.</p>'}</div>`;
+  <div class="card">${list.length ? movesTable(list, true) : '<p class="empty">Aucun mouvement. Les entrées en stock se font à la réception d’une commande (page Commandes), les sorties à chaque vente.</p>'}</div>`;
 }
 function empty() {
   return `<div class="card empty"><h2>Votre boutique est prête</h2><p>Ajoutez votre premier parfum avec son prix fournisseur et son prix de vente.</p>
@@ -287,7 +288,7 @@ function productForm(p = {}) {
   ${field('Description (notes olfactives, usage…)', 'desc', p.desc, 'maxlength="160"')}
   <div class="row">${field('Contenance (ml)', 'size', p.size, 'type="number" min="0" step="any"')}${field('Fournisseur', 'supplier', p.supplier, 'maxlength="80"')}</div>
   <div class="row">${field('Prix fournisseur (FCFA)', 'cost', p.cost, 'type="number" min="0" step="any" required')}${field('Prix de vente Planète 2 (FCFA)', 'price', p.price, 'type="number" min="0" step="any" required')}</div>
-  <div class="row">${p.id ? '' : field('Stock initial', 'stock', 0, 'type="number" min="0" step="1" required')}${field('Seuil d’alerte', 'min', p.min ?? 3, 'type="number" min="0" step="1" required')}</div>
+  <div class="row">${p.id ? '' : field('Stock déjà en agence', 'stock', 0, 'type="number" min="0" step="1" required')}${field('Seuil d’alerte', 'min', p.min ?? 3, 'type="number" min="0" step="1" required')}</div>
   <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri" value="ok">Enregistrer</button></div></form>`);
   $('#pf').onsubmit = e => {
     const d = Object.fromEntries(new FormData(e.target));
@@ -555,6 +556,7 @@ const orderRest = o => o.cancelled ? 0 : o.lines.reduce((t, l) => t + lineRest(l
 const orderRestAmt = o => o.cancelled ? 0 : o.lines.reduce((t, l) => t + lineRest(l) * l.price, 0);
 const orderAmt = o => o.lines.reduce((t, l) => t + l.qty * l.price, 0);
 const orderState = o => o.cancelled ? 'cancelled' : orderRest(o) > 0 ? 'pending' : 'received';
+const pendingQty = pid => db.orders.reduce((t, o) => t + (o.cancelled ? 0 : o.lines.filter(l => l.pid === pid).reduce((a, l) => a + lineRest(l), 0)), 0);
 const capIn = () => db.cap.reduce((t, c) => t + c.amount, 0);
 const capOut = () => db.cash.filter(c => c.src === 'capital').reduce((t, c) => t + c.amount, 0);
 
@@ -565,7 +567,7 @@ function vOrders() {
   const head = `<div class="bar"><select id="ofilt" aria-label="Affichage">${S.map(([v, l]) => `<option value="${v}" ${v === ofilt ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="kpis"><div class="kpi hero"><span>En attente chez les fournisseurs</span><b>${fcfa(pend.reduce((t, o) => t + orderRestAmt(o), 0))}</b></div>
   <div class="kpi"><span>Commandes en attente</span><b>${pend.length}</b></div><div class="kpi"><span>Produits attendus</span><b>${pend.reduce((t, o) => t + orderRest(o), 0)}</b></div></div>`;
-  if (!list.length) return head + '<div class="card empty"><h2>Aucune commande</h2><p>Notez ici ce que vous commandez aux fournisseurs : produits, quantités et prix. À l’arrivée, « Réceptionner » ajoute les produits au stock.</p></div>';
+  if (!list.length) return head + '<div class="card empty"><h2>Aucune commande</h2><p>Notez ici ce que vous commandez aux fournisseurs : produits, quantités et prix. Le stock disponible n’augmente qu’à l’arrivée : « Réceptionner » confirme la réception et ajoute les produits.</p></div>';
   const B = { pending: ['low', 'En attente'], received: ['ok', 'Reçue'], cancelled: ['out', 'Annulée'] };
   return head + `<div class="stack">${list.map(o => { const st = orderState(o);
     return `<div class="card"><div class="og-h"><div><h2>${orderNo(o.n)} · ${esc(o.supplier || 'Fournisseur non précisé')}</h2><small>Commandée le ${dateFr(o.date)} · ${fcfa(orderAmt(o))}</small></div>
@@ -573,7 +575,7 @@ function vOrders() {
     <table><thead><tr><th>Produit</th><th class="num">Commandé</th><th class="num">Prix unitaire</th><th class="num">Reçu</th><th class="num">Reste</th><th class="num">Total</th></tr></thead><tbody>
     ${o.lines.map(l => `<tr><td>${esc(l.name)}</td><td class="num">${l.qty}</td><td class="num">${fcfa(l.price)}</td><td class="num">${l.recv || 0}</td><td class="num">${o.cancelled ? 0 : lineRest(l)}</td><td class="num">${fcfa(l.qty * l.price)}</td></tr>`).join('')}</tbody></table></div>`; }).join('')}</div>`;
 }
-function orderForm() {
+function orderForm(pid0) {
   if (!db.products.length) return toast('Ajoutez d’abord un produit');
   dlg.classList.add('wide'); dlg.addEventListener('close', () => dlg.classList.remove('wide'), { once: true });
   const opts = db.products.map(p => `<option value="${p.id}">${esc(p.name)}${p.size ? ' ' + p.size + ' ml' : ''}</option>`).join('');
@@ -584,14 +586,17 @@ function orderForm() {
   <div class="ol olh"><span>Produit</span><span>Qté commandée</span><span>Prix d’achat unitaire</span><span class="r">Total</span><span></span></div>
   <div id="olines"></div><div><button type="button" class="btn sm" id="oadd">+ Ajouter un produit</button></div>
   <div class="tot"><div><span>Total de la commande</span><b id="otot">0 FCFA</b></div></div>
-  <label class="f">Décaissement correspondant<select name="pay"><option value="">Ne pas enregistrer de décaissement maintenant</option><option value="ventes">Décaisser sur les ventes du mois</option><option value="capital">Décaisser sur le capital de départ</option></select></label>
+  ${field('Apport complémentaire pour cette commande (FCFA, facultatif)', 'apport', '', 'type="number" min="0" step="any"')}
+  <label class="f">Décaissement correspondant<select name="pay"><option value="">Ne pas enregistrer de décaissement maintenant</option><option value="ventes">Décaisser sur les ventes du mois</option><option value="capital">Décaisser sur l’apport complémentaire</option></select></label>
   <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer la commande</button></div></form>`);
   const f = $('#of'), box = $('#olines'), q = (r, n) => r.querySelector(`[name=${n}]`);
   const calc = () => { let tot = 0; box.querySelectorAll('.ol').forEach(r => { const n = parseInt(q(r, 'q').value, 10) || 0, u = +q(r, 'u').value || 0; r.querySelector('.lt').textContent = fcfa(n * u); tot += n * u; }); $('#otot').textContent = fcfa(tot); };
   const sync = (r, reset) => { const p = prod(q(r, 'p').value); if (reset || r.dataset.p !== p.id) { q(r, 'u').value = p.cost; r.dataset.p = p.id; if (!f.elements.supplier.value && p.supplier) f.elements.supplier.value = p.supplier; } calc(); };
   const add = id => { box.insertAdjacentHTML('beforeend', `<div class="ol"><select name="p" aria-label="Produit">${opts}</select><input name="q" type="number" min="1" step="1" value="1" required aria-label="Quantité commandée"><input name="u" type="number" min="0" step="any" required aria-label="Prix d’achat unitaire"><b class="lt r"></b><button type="button" class="btn sm bad" data-rm aria-label="Retirer">✕</button></div>`); const r = box.lastElementChild; q(r, 'p').value = id; sync(r, true); };
-  add(db.products[0].id);
+  const first = prod(pid0) ? pid0 : db.products[0].id;
+  add(first);
   $('#oadd').onclick = () => add(db.products[0].id);
+  f.elements.apport.oninput = () => { if ((+f.elements.apport.value || 0) > 0 && !f.elements.pay.value) f.elements.pay.value = 'capital'; };
   box.onclick = e => { const b = e.target.closest('[data-rm]'); if (b && box.children.length > 1) { b.closest('.ol').remove(); calc(); } };
   box.oninput = calc; box.onchange = e => { if (e.target.name === 'p') sync(e.target.closest('.ol')); };
   f.onsubmit = e => {
@@ -600,8 +605,10 @@ function orderForm() {
     const total = L.reduce((t, l) => t + l.qty * l.price, 0), date = f.elements.date.value, supplier = f.elements.supplier.value.trim(), pay = f.elements.pay.value;
     const o = { id: uid(), n: db.orders.reduce((m, x) => Math.max(m, x.n), 0) + 1, ts: Date.now(), date, supplier, lines: L };
     db.orders.push(o);
+    const apport = +f.elements.apport.value || 0;
+    if (apport > 0) db.cap.push({ id: uid(), ts: Date.now(), date, amount: apport, note: `Apport pour la commande ${orderNo(o.n)}${supplier ? ' · ' + supplier : ''}`, order: o.id });
     if (pay && total > 0) db.cash.push({ id: uid(), ts: Date.now(), date, amount: total, reason: `Commande ${orderNo(o.n)}${supplier ? ' · ' + supplier : ''}`, ...(pay === 'capital' ? { src: 'capital' } : {}), order: o.id });
-    save(); dlg.close(); view = 'orders'; ofilt = 'pending'; render(); toast('Commande enregistrée : en attente chez le fournisseur');
+    save(); dlg.close(); view = 'orders'; ofilt = 'pending'; render(); toast('Commande enregistrée : le stock n’est pas modifié avant la réception');
   };
 }
 function receiveForm(oid) {
@@ -609,7 +616,7 @@ function receiveForm(oid) {
   const L = o.lines.filter(l => lineRest(l) > 0 && prod(l.pid)); if (!L.length) return toast('Les produits de cette commande n’existent plus');
   dlg.classList.add('wide'); dlg.addEventListener('close', () => dlg.classList.remove('wide'), { once: true });
   open(`<form method="dialog" id="rf"><h2>Réceptionner ${orderNo(o.n)}</h2>
-  <p class="hint">Indiquez la quantité réellement reçue. Elle est ajoutée au stock (entrée) et le prix d’achat du produit est mis à jour. Ce qui n’est pas reçu reste en attente.</p>
+  <p class="hint">Indiquez la quantité réellement reçue. Elle est ajoutée au stock disponible (entrée) et le prix d’achat du produit est mis à jour. Ce qui n’est pas reçu reste en attente.</p>
   ${field('Date de réception', 'date', today(), 'type="date" required')}
   <div class="ol olh"><span>Produit</span><span>Reste</span><span>Prix d’achat</span><span>Reçu maintenant</span><span></span></div>
   ${L.map(l => `<div class="ol" data-l="${l.id}"><b>${esc(l.name)}</b><span>${lineRest(l)}</span><span>${fcfa(l.price)}</span><input name="q" type="number" min="0" max="${lineRest(l)}" step="1" value="${lineRest(l)}" aria-label="Quantité reçue"><span></span></div>`).join('')}
@@ -633,7 +640,7 @@ function cancelOrder(oid) {
   o.cancelled = true; save(); render(); toast('Commande annulée');
 }
 
-/* ---------- Décaissements et capital ---------- */
+/* ---------- Décaissements et apports complémentaires ---------- */
 function vCash() {
   const PER = [['day', 'Aujourd’hui'], ['week', '7 derniers jours'], ['month', 'Ce mois'], ['all', 'Tout']];
   const list = db.cash.filter(c => inPeriod(c.date)).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
@@ -641,19 +648,19 @@ function vCash() {
   const ventes = db.sales.filter(s => inPeriod(s.date)).reduce((s, x) => s + x.total, 0), caps = [...db.cap].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
   return `<div class="bar"><select id="sper" aria-label="Période">${PER.map(([v, l]) => `<option value="${v}" ${v === sper ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="kpis"><div class="kpi hero"><span>Total décaissé</span><b>${fcfa(tV + tC)}</b></div><div class="kpi"><span>Prélevé sur les ventes</span><b>${fcfa(tV)}</b></div>
-  <div class="kpi"><span>Solde des ventes</span><b>${fcfa(ventes - tV)}</b></div><div class="kpi"><span>Capital de départ (total)</span><b>${fcfa(capIn())}</b></div>
-  <div class="kpi"><span>Capital disponible</span><b>${fcfa(capIn() - capOut())}</b></div></div>
+  <div class="kpi"><span>Solde des ventes</span><b>${fcfa(ventes - tV)}</b></div><div class="kpi"><span>Apports complémentaires (total)</span><b>${fcfa(capIn())}</b></div>
+  <div class="kpi"><span>Apport disponible</span><b>${fcfa(capIn() - capOut())}</b></div></div>
   <div class="stack"><div class="card"><h2>Décaissements</h2>${list.length ? `<table><thead><tr><th>Date</th><th>Raison du décaissement</th><th>Payé avec</th><th class="num">Montant</th><th></th></tr></thead><tbody>
-  ${list.map(c => `<tr><td>${dateFr(c.date)}</td><td>${esc(c.reason)}</td><td><span class="badge ${c.src === 'capital' ? 'low' : 'ok'}">${c.src === 'capital' ? 'Capital' : 'Ventes'}</span></td><td class="num"><b>${fcfa(c.amount)}</b></td>
+  ${list.map(c => `<tr><td>${dateFr(c.date)}</td><td>${esc(c.reason)}</td><td><span class="badge ${c.src === 'capital' ? 'low' : 'ok'}">${c.src === 'capital' ? 'Apport' : 'Ventes'}</span></td><td class="num"><b>${fcfa(c.amount)}</b></td>
   <td><div class="acts"><button class="btn sm bad" data-a="delcash" data-id="${c.id}" aria-label="Supprimer ce décaissement">Supprimer</button></div></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Aucun décaissement sur cette période.</p>'}</div>
-  <div class="card"><h2>Apports de capital</h2><p class="hint">Argent ajouté pour acheter du stock, hors décaissement : il ne modifie pas les ventes. Le capital n’est pas filtré par période.</p>${caps.length ? `<table><thead><tr><th>Date</th><th>Origine / note</th><th class="num">Montant</th><th></th></tr></thead><tbody>
+  <div class="card"><h2>Apports complémentaires</h2><p class="hint">Argent ajouté à l’occasion d’une nouvelle commande pour acheter du stock (ce n’est pas le capital de départ). Il ne modifie pas les ventes. Les apports ne sont pas filtrés par période.</p>${caps.length ? `<table><thead><tr><th>Date</th><th>Origine / note</th><th class="num">Montant</th><th></th></tr></thead><tbody>
   ${caps.map(c => `<tr><td>${dateFr(c.date)}</td><td>${esc(c.note || '—')}</td><td class="num"><b>${fcfa(c.amount)}</b></td><td><div class="acts"><button class="btn sm bad" data-a="delcap" data-id="${c.id}" aria-label="Supprimer cet apport">Supprimer</button></div></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Aucun apport enregistré.</p>'}</div></div>`;
 }
 function cashForm() {
   open(`<form method="dialog" id="cf"><h2>Nouveau décaissement</h2>
   <p class="hint">Somme sortie pour le ravitaillement en parfums auprès des fournisseurs, avec sa date et sa raison.</p>
   <div class="row">${field('Date du décaissement', 'date', today(), 'type="date" required')}${field('Montant (FCFA)', 'amount', '', 'type="number" min="1" step="any" required')}</div>
-  <label class="f">Payé avec<select name="src"><option value="ventes">Les ventes du mois (déduit des ventes)</option><option value="capital">Le capital de départ (ventes inchangées)</option></select></label>
+  <label class="f">Payé avec<select name="src"><option value="ventes">Les ventes du mois (déduit des ventes)</option><option value="capital">L’apport complémentaire (ventes inchangées)</option></select></label>
   <label class="f">Raison du décaissement<textarea name="reason" rows="3" required maxlength="200" placeholder="Ex. : achat de 20 flacons chez le fournisseur"></textarea></label>
   <div class="bal" id="bal"></div>
   <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer le décaissement</button></div></form>`);
@@ -663,7 +670,7 @@ function cashForm() {
     const mo = d.slice(0, 7), lab = new Date(mo + '-01T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
     const net = cap ? capIn() - capOut() : db.sales.filter(s => s.date.startsWith(mo)).reduce((t, s) => t + s.total, 0) - db.cash.filter(c => c.src !== 'capital' && c.date.startsWith(mo)).reduce((t, c) => t + c.amount, 0);
     bal.classList.toggle('neg', net - amt < 0);
-    bal.textContent = `${cap ? 'Capital disponible' : 'Ventes de ' + lab + ' après décaissements'} : ${fcfa(net)}` + (amt ? ` → ${fcfa(net - amt)} avec ce décaissement` : '') + (net - amt < 0 ? ' (montant insuffisant)' : '');
+    bal.textContent = `${cap ? 'Apport disponible' : 'Ventes de ' + lab + ' après décaissements'} : ${fcfa(net)}` + (amt ? ` → ${fcfa(net - amt)} avec ce décaissement` : '') + (net - amt < 0 ? ' (montant insuffisant)' : '');
   };
   f.oninput = upd; f.onchange = upd; upd();
   f.onsubmit = e => {
@@ -674,19 +681,19 @@ function cashForm() {
   };
 }
 function capForm() {
-  open(`<form method="dialog" id="kf"><h2>Ajouter du capital</h2>
-  <p class="hint">Argent apporté au démarrage, ou plus tard, pour acheter du stock. Ce n’est ni une vente ni un décaissement : les ventes du mois ne changent pas.</p>
+  open(`<form method="dialog" id="kf"><h2>Ajouter un apport complémentaire</h2>
+  <p class="hint">Argent apporté en complément lors d’une nouvelle commande, pour acheter du stock. Ce n’est pas le capital de départ, ni une vente, ni un décaissement : les ventes du mois ne changent pas.</p>
   <div class="row">${field('Date', 'date', today(), 'type="date" required')}${field('Montant (FCFA)', 'amount', '', 'type="number" min="1" step="any" required')}</div>
   ${field('Origine / note (facultatif)', 'note', '', 'maxlength="120"')}
-  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer le capital</button></div></form>`);
+  <div class="foot"><button type="button" class="btn" data-close>Annuler</button><button class="btn pri">Enregistrer l’apport</button></div></form>`);
   $('#kf').onsubmit = e => {
     const f = e.target, amount = +f.elements.amount.value; if (!(amount > 0)) { e.preventDefault(); return; }
-    db.cap.push({ id: uid(), ts: Date.now(), date: f.elements.date.value, amount, note: f.elements.note.value.trim() }); save(); render(); toast('Capital ajouté');
+    db.cap.push({ id: uid(), ts: Date.now(), date: f.elements.date.value, amount, note: f.elements.note.value.trim() }); save(); render(); toast('Apport ajouté');
   };
 }
 function delCap(id) {
   const c = db.cap.find(x => x.id === id); if (!c) return;
-  askPass('Supprimer cet apport de capital', `${fcfa(c.amount)} du ${dateFr(c.date)}${c.note ? ' : ' + esc(c.note) : ''}.<br>Le capital disponible diminuera de ce montant.`, () => { db.cap = db.cap.filter(x => x.id !== id); save(); render(); toast('Apport supprimé'); });
+  askPass('Supprimer cet apport complémentaire', `${fcfa(c.amount)} du ${dateFr(c.date)}${c.note ? ' : ' + esc(c.note) : ''}.<br>L’apport disponible diminuera de ce montant.`, () => { db.cap = db.cap.filter(x => x.id !== id); save(); render(); toast('Apport supprimé'); });
 }
 
 function askPass(title, html, onOk) {
@@ -720,7 +727,7 @@ function docData(kind) {
       rows: O.map(o => [orderNo(o.n), dateFr(o.date), o.supplier || '-', o.lines.filter(l => lineRest(l) > 0).map(l => `${lineRest(l)} x ${l.name} (${plain(l.price)})`).join(' ; '), orderRest(o), plain(orderRestAmt(o))]),
       foot: `${O.length} commande(s) en attente  |  Total : ${plain(O.reduce((t, o) => t + orderRestAmt(o), 0))}` }; }
   if (kind === 'cash') { const C = [...db.cash].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts), t = C.reduce((s, c) => s + c.amount, 0);
-    return { file: 'decaissements', title: 'Décaissements', head: ['Date', 'Raison', 'Payé avec', 'Montant'], rows: C.map(c => [dateFr(c.date), c.reason, c.src === 'capital' ? 'Capital' : 'Ventes', plain(c.amount)]), foot: `${C.length} décaissement(s)  |  Total : ${plain(t)}` }; }
+    return { file: 'decaissements', title: 'Décaissements', head: ['Date', 'Raison', 'Payé avec', 'Montant'], rows: C.map(c => [dateFr(c.date), c.reason, c.src === 'capital' ? 'Apport' : 'Ventes', plain(c.amount)]), foot: `${C.length} décaissement(s)  |  Total : ${plain(t)}` }; }
   if (kind === 'sales') { const S = [...db.sales].sort((a, b) => b.date.localeCompare(a.date) || b.n - a.n), t = S.reduce((x, y) => x + y.total, 0);
     return { file: 'ventes', title: 'Ventes', head: ['N°', 'Date', 'Client', 'Articles vendus', 'Qté', 'Total', 'Remise'],
       rows: S.map(x => [saleNo(x.n), dateFr(x.date), x.client || '-', x.lines.map(l => `${l.qty} x ${l.name} (${plain(l.unit)})`).join(' ; '), saleQty(x), plain(x.total), plain(saleRem(x))]), foot: `${S.length} vente(s)  |  Total : ${plain(t)}` }; }
@@ -851,7 +858,7 @@ document.addEventListener('click', e => {
   const nav = e.target.closest('#nav button'); if (nav) { view = nav.dataset.view; return render(); }
   const b = e.target.closest('[data-a]'); if (!b) return;
   const p = prod(b.dataset.id);
-  ({ new: () => productForm(), cash: () => cashForm(), cap: () => capForm(), delcap: () => delCap(b.dataset.id), order: () => orderForm(), recv: () => receiveForm(b.dataset.id), cancelord: () => cancelOrder(b.dataset.id), delcash: () => delCash(b.dataset.id), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), delmove: () => delMove(b.dataset.id), demo,
+  ({ new: () => productForm(), cash: () => cashForm(), cap: () => capForm(), delcap: () => delCap(b.dataset.id), order: () => orderForm(b.dataset.id), recv: () => receiveForm(b.dataset.id), cancelord: () => cancelOrder(b.dataset.id), delcash: () => delCash(b.dataset.id), exp: exportForm, sale: () => saleForm(b.dataset.id), receipt: () => receiptForm(b.dataset.id), unsale: () => cancelSale(b.dataset.id), edit: () => productForm(p), in: () => moveForm('in', b.dataset.id), out: () => exitForm(b.dataset.id), back: () => backForm(b.dataset.id), sellout: () => saleFromExit(b.dataset.id), delmove: () => delMove(b.dataset.id), demo,
     del: () => { if (confirm(`Supprimer « ${p.name} » et son historique ?`)) { db.products = db.products.filter(x => x !== p); db.moves = db.moves.filter(m => m.pid !== p.id); save(); render(); toast('Produit supprimé'); } } })[b.dataset.a]();
 });
 document.addEventListener('input', e => { if (e.target.id === 'q') { q = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#q'); i.focus(); i.setSelectionRange(pos, pos); } });
